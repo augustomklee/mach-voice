@@ -1,0 +1,183 @@
+import AVFoundation
+import Foundation
+import Speech
+import os.log
+
+/// Wraps the Speech framework's analyzer and transcriber.
+///
+/// `finalizeAndFinishThroughEndOfInput()` and `cancelAndFinishNow()` permanently
+/// finish a `SpeechAnalyzer` instance, not just the current Utterance -- Apple's
+/// docs describe both as "finishes analysis." So a fresh `SpeechAnalyzer` and
+/// `SpeechTranscriber` pair is created for every Utterance. `ModelRetention
+/// .processLifetime` is what keeps the underlying model weights resident so
+/// each new analyzer's `prepareToAnalyze` stays cheap, per MVP.md's guidance
+/// that the model stays "resident between Utterances."
+@MainActor
+final class SpeechEngine: ObservableObject {
+    private let logger = Logger(subsystem: "com.augustomklee.MachVoice", category: "SpeechEngine")
+    private let locale: Locale
+    private var analyzer: SpeechAnalyzer?
+    private var transcriber: SpeechTranscriber?
+    private var audioContinuation: AsyncStream<AnalyzerInput>.Continuation?
+    private var analyzeTask: Task<Void, Never>?
+    private var resultTask: Task<Void, Never>?
+    private var totalFrames: AVAudioFramePosition = 0
+
+    /// Called when a partial Draft is produced.
+    var onDraft: ((String) -> Void)?
+    /// Called when the final Transcript is produced.
+    var onTranscript: ((String) -> Void)?
+    /// Called when an error occurs.
+    var onError: ((Error) -> Void)?
+
+    /// The exact audio format the analyzer requires. Feeding buffers in any
+    /// other format crashes deep inside the Speech framework.
+    let audioFormat: AVAudioFormat
+
+    init(locale: Locale = Locale(identifier: "en_US")) async throws {
+        self.locale = locale
+        let probeTranscriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+
+        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [probeTranscriber]) else {
+            throw SpeechEngineError.noAudioFormat
+        }
+        self.audioFormat = format
+    }
+
+    /// Warm the model at launch so the first Utterance does not pay the
+    /// asset-loading cost. Uses a throwaway analyzer that is immediately
+    /// finished; only the underlying model residency (processLifetime)
+    /// carries forward.
+    func prepare() async {
+        do {
+            let warmupTranscriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+            let options = SpeechAnalyzer.Options(priority: .medium, modelRetention: .processLifetime)
+            let warmupAnalyzer = SpeechAnalyzer(modules: [warmupTranscriber], options: options)
+
+            try await warmupAnalyzer.prepareToAnalyze(in: audioFormat)
+            await warmupAnalyzer.cancelAndFinishNow()
+
+            logger.log("Speech model warmed, format=\(self.audioFormat.description, privacy: .public)")
+        } catch {
+            onError?(error)
+            logger.error("Failed to warm speech model: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Start a new Utterance: build a fresh analyzer/transcriber pair and
+    /// begin an audio stream for it.
+    func startAnalysis() {
+        let newTranscriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+        let options = SpeechAnalyzer.Options(priority: .medium, modelRetention: .processLifetime)
+        let newAnalyzer = SpeechAnalyzer(modules: [newTranscriber], options: options)
+
+        analyzer = newAnalyzer
+        transcriber = newTranscriber
+        totalFrames = 0
+
+        // Collect results for this Utterance's transcriber.
+        resultTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                for try await result in newTranscriber.results {
+                    let text = String(result.text.characters)
+                    self.logger.log("Result isFinal=\(result.isFinal) text=\(text, privacy: .public)")
+                    if result.isFinal {
+                        self.onTranscript?(text)
+                    } else {
+                        self.onDraft?(text)
+                    }
+                }
+                self.logger.log("Results sequence ended")
+            } catch {
+                self.logger.error("Results sequence error: \(error.localizedDescription, privacy: .public)")
+                self.onError?(error)
+            }
+        }
+
+        let stream = AsyncStream<AnalyzerInput> { continuation in
+            self.audioContinuation = continuation
+        }
+
+        analyzeTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await newAnalyzer.prepareToAnalyze(in: self.audioFormat)
+                _ = try await newAnalyzer.analyzeSequence(stream)
+                self.logger.log("Analysis sequence ended")
+            } catch {
+                self.logger.error("Analysis sequence error: \(error.localizedDescription, privacy: .public)")
+                self.onError?(error)
+            }
+        }
+
+        logger.log("Analysis started")
+    }
+
+    /// Feed an audio buffer into the analyzer.
+    func analyze(buffer: AVAudioPCMBuffer) {
+        guard let audioContinuation else {
+            logger.error("analyze(buffer:) called with no active audio continuation")
+            return
+        }
+
+        let startTime = CMTimeMake(value: totalFrames, timescale: Int32(audioFormat.sampleRate))
+        let input = AnalyzerInput(buffer: buffer, bufferStartTime: startTime)
+        audioContinuation.yield(input)
+
+        totalFrames += Int64(buffer.frameLength)
+    }
+
+    /// Finalize the current Utterance's analyzer and produce a final Transcript.
+    func finalize() {
+        audioContinuation?.finish()
+        audioContinuation = nil
+
+        guard let analyzer else { return }
+        self.analyzer = nil
+        let finishedTranscriber = transcriber
+        transcriber = nil
+
+        Task {
+            do {
+                try await analyzer.finalizeAndFinishThroughEndOfInput()
+                self.logger.log("Finalized utterance")
+            } catch {
+                self.logger.error("Finalize error: \(error.localizedDescription, privacy: .public)")
+                onError?(error)
+            }
+            _ = finishedTranscriber
+        }
+    }
+
+    /// Cancel the current Utterance's analyzer.
+    func cancel() {
+        audioContinuation?.finish()
+        audioContinuation = nil
+
+        guard let analyzer else { return }
+        self.analyzer = nil
+        transcriber = nil
+
+        Task {
+            await analyzer.cancelAndFinishNow()
+            self.logger.log("Cancelled utterance")
+        }
+    }
+
+    /// Stop the active analysis task.
+    func stop() {
+        audioContinuation?.finish()
+        audioContinuation = nil
+        analyzeTask?.cancel()
+        analyzeTask = nil
+        resultTask?.cancel()
+        resultTask = nil
+        analyzer = nil
+        transcriber = nil
+    }
+
+    enum SpeechEngineError: Error {
+        case noAudioFormat
+    }
+}
