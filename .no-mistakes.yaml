@@ -1,0 +1,33 @@
+# mach-voice - solo macOS app, gated by no-mistakes.
+# The shape of this file mirrors dev-configs/.no-mistakes.yaml; the reasoning
+# behind both keys lives in that repo's README under the `.no-mistakes.yaml`
+# bullet and "Skipping the ci step (per repo)".
+agent: claude
+
+# WHY THE CI STEP IS SKIPPED: this repo has no `.github/workflows/` at all, so no
+# status check ever registers on a PR and the ci step waits out the full
+# `ci_timeout` instead of failing. PR #1 merged with "0 passed, 0 failed - this PR
+# has no CI checks configured". If real CI is ever added here, delete this skip
+# wiring rather than working around it.
+#
+# The marker below is a comment that no-mistakes itself ignores: the agent driving
+# `no-mistakes axi run` reads it and passes `--skip=ci`. The operative instruction
+# is in AGENTS.md, which is auto-loaded, because the tool-generated skill does not
+# mention the marker.
+#
+# nm-skill-skip: ci
+
+# There is no lint step configured. This repo has no SwiftLint and no formatter,
+# so there is nothing for that step to run; `swift build` carries the compiler's
+# own diagnostics.
+
+# The evidence pair. `ignore_patterns` keeps captures out of the gate's review and
+# documentation checks, since they are evidence rather than code.
+# `store_in_repo` puts the gate's own test artifacts in the repo beside the demo
+# captures the `implement` skill commits, so both render on the pull request.
+ignore_patterns:
+  - ".no-mistakes/evidence/**"
+
+test:
+  evidence:
+    store_in_repo: true

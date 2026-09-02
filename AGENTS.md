@@ -96,6 +96,18 @@ A change is done when it builds on the Mac, and when there is evidence it ran fr
 Console output or a screenshot captured from the running app counts.
 An assertion that it should work does not.
 
+## The gate
+
+`no-mistakes` decides what merges, and it runs on this Mac outside whatever wrote the code.
+Do not merge a pull request that has not been through it.
+
+This repository has no `.github/workflows/`, so the ci step never sees a status check register and waits out the full timeout instead of failing.
+Pass `--skip=ci` when driving `no-mistakes axi run` here.
+`.no-mistakes.yaml` carries the same intent as an `# nm-skill-skip: ci` marker, which the tool ignores and the agent reads.
+
+Demo evidence is committed, in the same commit as the work, under `.no-mistakes/evidence/<branch>/demo/`.
+A change that builds and passes its tests but has no capture from the running app has not met the definition of done above.
+
 ## Forbidden actions
 
 Do not retry an **Injection** after an unreadable read-back.
