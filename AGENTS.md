@@ -32,6 +32,11 @@ Strand instead: clipboard, **History**, tell the speaker, and record in the **In
 A **Stranded Transcript** loses nothing and a duplicated one silently corrupts.
 A future reader will be tempted to fix the first-**Utterance** strand by retrying, and that is the outcome this design exists to prevent.
 
+Only the read-back taken after a successful write is unknowable.
+A value that cannot be read before any write is a clean failure, because nothing was written and so nothing can be duplicated, and that path still falls through to paste.
+`InjectionServiceStrandTests` holds both halves of that distinction, so collapsing either one into the other turns a test red.
+An application mach-voice cannot identify has no key in the **Injection Profile**, so a strand there teaches nothing and the next **Utterance** into it can strand again.
+
 **Construct a fresh `SpeechAnalyzer` and `DictationTranscriber` for every Utterance.**
 `docs/adr/0001` and the comment at the top of `SpeechEngine.swift`.
 `finalizeAndFinishThroughEndOfInput()` and `cancelAndFinishNow()` finish the analyzer permanently and not merely the current **Utterance**, so a reused analyzer is dead after the first one.
@@ -54,7 +59,8 @@ Keep that single construction site, and do not read the missing protocol as lice
 macOS 26.5, build 25F71.
 Swift 6.3.2, Xcode 26.5.
 `Package.swift` pins swift-tools 6.2, Swift language mode 6, and platform `.macOS(.v26)`.
-Three targets: the `MachVoiceKit` library holds every source file, the `MachVoice` executable holds only the entry point and depends on it, and `MachVoiceKitTests` tests `MachVoiceKit` with swift-testing.
+Three targets: the `MachVoiceKit` library holds every source file the app ships, the `MachVoice` executable holds only the entry point and depends on it, and `MachVoiceKitTests` tests `MachVoiceKit` with swift-testing.
+`Tools/` sits outside `Package.swift` and is built by hand.
 The English **Speech Model** is installed for `DictationTranscriber` and 16 kHz mono is the working audio format.
 
 **This repository builds on macOS and nowhere else.**
@@ -77,6 +83,15 @@ The bundle identifier and the signing identity together are what macOS attaches 
 Changing either one makes macOS treat this as a new application and silently drops the grant.
 Both are pinned in the `Makefile` on purpose, so do not change them to make a build succeed.
 
+`Tools/UnverifiableTarget/main.swift` is a fixture **Target** for `docs/adr/0002`, built on its own because it is not in the package:
+
+```
+swiftc -O -o /tmp/UnverifiableTarget Tools/UnverifiableTarget/main.swift
+```
+
+Its bottom field reads its Accessibility value before a write and not after, which is the unknowable read-back, so running it is the only way to reach the hard strand from the real entry point.
+Run the binary bare for a **Target** with no application identity, or wrap it in an `.app` with a `CFBundleIdentifier` to give it one.
+
 ## What is not built yet
 
 Say so rather than working around it.
@@ -89,6 +104,13 @@ That file is a JSON array of strings at `~/Library/Application Support/MachVoice
 Terms are compared case-sensitively, so `Ibiuna` and `ibiuna` are two separate terms rather than a duplicate.
 That path needs the app relaunched, because `VocabularyManager` reads the file once in `init` and nothing re-reads it afterwards.
 The History and Vocabulary menu items in `MachVoiceApp.swift` are `TODO` stubs that print and open nothing.
+
+`InjectionService.attemptPaste` reports success unconditionally, because Cmd+V goes to whatever holds keyboard focus and there is nothing to read back afterwards.
+Paste therefore always wins the probe, and the keystrokes mechanism is reached only when the **Injection Profile** on disk already names it.
+Inside `inject`, an unreadable read-back is the only way a **Transcript** strands.
+The other strand is an **Utterance** whose **Target** was never captured, which `UtteranceController` handles before `inject` is called.
+
+The pasteboard carries the `org.nspasteboard.ConcealedType` marker but not the transient one that `docs/adr/0002` and `docs/MVP.md` also name.
 
 There is a test target, `MachVoiceKitTests`, but no continuous integration.
 

@@ -13,6 +13,7 @@ final class InjectionProfile: ObservableObject {
         self.init(storageURL: dir.appendingPathComponent("injection-profile.json"))
     }
 
+    /// The profile behind an explicit file, so a test can point it at a temporary one.
     init(storageURL: URL) {
         self.storageURL = storageURL
         load()

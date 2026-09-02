@@ -27,6 +27,7 @@ struct AccessibilityField {
         }
     }
 
+    /// A scripted field, so a test can drive a read-back that fails only after a write.
     init(read: @escaping () -> (value: String?, readable: Bool), write: @escaping (String) -> AXError) {
         self.read = read
         self.write = write
@@ -50,6 +51,7 @@ struct Target {
         )
     }
 
+    /// A Target with an explicit field, so a test can supply a scripted one.
     init(application: AXUIElement?, focusedElement: AXUIElement?, bundleIdentifier: String?, field: AccessibilityField?) {
         self.application = application
         self.focusedElement = focusedElement
