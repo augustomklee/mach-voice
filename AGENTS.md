@@ -32,7 +32,7 @@ Strand instead: clipboard, **History**, tell the speaker, and record in the **In
 A **Stranded Transcript** loses nothing and a duplicated one silently corrupts.
 A future reader will be tempted to fix the first-**Utterance** strand by retrying, and that is the outcome this design exists to prevent.
 
-**Construct a fresh `SpeechAnalyzer` and `SpeechTranscriber` for every Utterance.**
+**Construct a fresh `SpeechAnalyzer` and `DictationTranscriber` for every Utterance.**
 `docs/adr/0001` and the comment at the top of `SpeechEngine.swift`.
 `finalizeAndFinishThroughEndOfInput()` and `cancelAndFinishNow()` finish the analyzer permanently and not merely the current **Utterance**, so a reused analyzer is dead after the first one.
 `ModelRetention.processLifetime` is what keeps the model weights resident, so a fresh analyzer per **Utterance** stays cheap.
@@ -79,9 +79,10 @@ Both are pinned in the `Makefile` on purpose, so do not change them to make a bu
 
 Say so rather than working around it.
 
-`VocabularyManager` persists terms to `vocabulary.json` and its terms never reach the transcriber.
-`contextualStrings` appears in no source file, so `docs/adr/0001`'s stated reason for choosing Apple over Parakeet is currently unbacked by code.
+`VocabularyManager` persists terms to `vocabulary.json`, and `SpeechEngine.startAnalysis(vocabulary:)` hands them to `AnalysisContext.contextualStrings[.general]` before every Utterance's `DictationTranscriber` is built, so a term added now takes effect on the next Utterance.
+`docs/adr/0001` has an update section recording the earlier `SpeechTranscriber` dead end: that module ignores `AnalysisContext` entirely, which is why the module changed.
 
+The Vocabulary window is still not built: adding a term means editing `vocabulary.json` directly.
 The History and Vocabulary menu items in `MachVoiceApp.swift` are `TODO` stubs that print and open nothing.
 
 `InjectionService.attemptAccessibility` returns `nil` when the read-back is unreadable and the caller falls through to paste in the same **Utterance**.

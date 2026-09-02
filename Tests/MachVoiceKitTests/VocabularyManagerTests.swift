@@ -38,4 +38,19 @@ struct VocabularyManagerTests {
 
         manager.remove(at: manager.allTerms.count - 1)
     }
+
+    @Test func addRejectsDuplicatesCaseSensitively() {
+        let manager = VocabularyManager()
+        let before = manager.allTerms.count
+
+        manager.add("Ibiuna Voice Case Test Term")
+        manager.add("ibiuna voice case test term")
+
+        #expect(manager.allTerms.count == before + 2)
+        #expect(manager.allTerms.contains("Ibiuna Voice Case Test Term"))
+        #expect(manager.allTerms.contains("ibiuna voice case test term"))
+
+        manager.remove(at: manager.allTerms.count - 1)
+        manager.remove(at: manager.allTerms.count - 1)
+    }
 }

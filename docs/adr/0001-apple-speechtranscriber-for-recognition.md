@@ -14,3 +14,10 @@ It was rejected because it adds a model download, a runtime, and a second thing 
 
 Recognition is wrapped behind a single-method protocol so swapping engines stays about a day's work rather than a rewrite.
 That wrapper exists specifically so this decision can be revisited cheaply, and it should not be removed as unnecessary indirection.
+
+## Update: DictationTranscriber, not SpeechTranscriber
+
+The Vocabulary-closes-the-gap claim above assumed `SpeechTranscriber`, the module `SpeechEngine` built until the Vocabulary was wired to recognition.
+Apple's own documentation scopes `AnalysisContext.contextualStrings` to `DictationTranscriber` only; `SpeechTranscriber` exposes no Vocabulary hook at all, and wiring `contextualStrings` into it compiled, ran, and changed nothing observable in three separate live Utterances.
+`SpeechEngine` now builds `DictationTranscriber` with the `progressiveShortDictation` preset, which is also the closer fit for a held-key Utterance than the long-form preset it replaced.
+The decision to stay on-device with Apple rather than Parakeet is unaffected; only the specific module changed.
