@@ -28,8 +28,8 @@ final class SpeechModelInstaller: ObservableObject {
         }
 
         // Check if already installed
-        let isAvailable = SpeechTranscriber.isAvailable
-        if isAvailable {
+        let status = await AssetInventory.status(forModules: [SpeechEngine.makeTranscriber(locale: locale)])
+        if status == .installed {
             installationState = .installed
             print("Speech model already available")
             return
@@ -57,7 +57,7 @@ final class SpeechModelInstaller: ObservableObject {
 
         do {
             // Create a transcriber instance to use as the module
-            let transcriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+            let transcriber = SpeechEngine.makeTranscriber(locale: locale)
 
             // Create an installation request
             let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber])

@@ -40,9 +40,17 @@ final class SpeechEngine: ObservableObject {
     /// other format crashes deep inside the Speech framework.
     let audioFormat: AVAudioFormat
 
+    /// The single module mach-voice recognises with. `SpeechModelInstaller`
+    /// probes and installs assets through this same call, because the two
+    /// modules keep separate asset inventories and a mismatch leaves the
+    /// analyzer with no installed model.
+    static func makeTranscriber(locale: Locale) -> DictationTranscriber {
+        DictationTranscriber(locale: locale, preset: .progressiveShortDictation)
+    }
+
     init(locale: Locale = Locale(identifier: "en_US")) async throws {
         self.locale = locale
-        let probeTranscriber = DictationTranscriber(locale: locale, preset: .progressiveShortDictation)
+        let probeTranscriber = Self.makeTranscriber(locale: locale)
 
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [probeTranscriber]) else {
             throw SpeechEngineError.noAudioFormat
@@ -56,7 +64,7 @@ final class SpeechEngine: ObservableObject {
     /// carries forward.
     func prepare() async {
         do {
-            let warmupTranscriber = DictationTranscriber(locale: locale, preset: .progressiveShortDictation)
+            let warmupTranscriber = Self.makeTranscriber(locale: locale)
             let options = SpeechAnalyzer.Options(priority: .medium, modelRetention: .processLifetime)
             let warmupAnalyzer = SpeechAnalyzer(modules: [warmupTranscriber], options: options)
 
@@ -74,8 +82,8 @@ final class SpeechEngine: ObservableObject {
     /// begin an audio stream for it. `vocabulary` is handed to this
     /// Utterance's `AnalysisContext` before analysis begins, so a term added
     /// to the Vocabulary takes effect on the very next Utterance.
-    func startAnalysis(vocabulary: [String] = []) {
-        let newTranscriber = DictationTranscriber(locale: locale, preset: .progressiveShortDictation)
+    func startAnalysis(vocabulary: [String]) {
+        let newTranscriber = Self.makeTranscriber(locale: locale)
         let options = SpeechAnalyzer.Options(priority: .medium, modelRetention: .processLifetime)
         let newAnalyzer = SpeechAnalyzer(modules: [newTranscriber], options: options)
         let context = AnalysisContext()
@@ -113,6 +121,11 @@ final class SpeechEngine: ObservableObject {
             guard let self else { return }
             do {
                 try await newAnalyzer.setContext(context)
+            } catch {
+                self.logger.error("Vocabulary not applied, continuing unbiased: \(error.localizedDescription, privacy: .public)")
+            }
+
+            do {
                 try await newAnalyzer.prepareToAnalyze(in: self.audioFormat)
                 _ = try await newAnalyzer.analyzeSequence(stream)
                 self.logger.log("Analysis sequence ended")
