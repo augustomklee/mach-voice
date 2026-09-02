@@ -1,6 +1,12 @@
 import Foundation
 
 /// Single editable list of terms that bias recognition.
+///
+/// `allTerms` is what `UtteranceController` hands to `SpeechEngine
+/// .startAnalysis(vocabulary:)` at the start of every Utterance. The list is
+/// read from `vocabulary.json` once in `init` and nothing re-reads it, so a
+/// term added by editing that file by hand only reaches recognition after the
+/// app is relaunched.
 @MainActor
 final class VocabularyManager: ObservableObject {
     @Published private(set) var terms: [String] = []
@@ -19,7 +25,9 @@ final class VocabularyManager: ObservableObject {
     /// All terms as a single array.
     var allTerms: [String] { terms }
 
-    /// Add a term to the Vocabulary.
+    /// Add a term to the Vocabulary. Surrounding whitespace is trimmed and an
+    /// empty term is rejected. A duplicate is rejected case-sensitively, so
+    /// "Ibiuna" and "ibiuna" are held as two separate terms.
     func add(_ term: String) {
         let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !terms.contains(trimmed) else { return }

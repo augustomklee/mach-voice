@@ -1,6 +1,9 @@
 # Apple SpeechTranscriber for recognition
 
-mach-voice uses the Speech framework's on-device `SpeechTranscriber` rather than a downloaded model such as Parakeet or Whisper.
+The module named in this title is now `DictationTranscriber`, and the update section at the end records why.
+Everything else in this record still stands.
+
+mach-voice uses the Speech framework's on-device recognition rather than a downloaded model such as Parakeet or Whisper.
 It runs entirely on the machine, costs nothing, needs no third-party runtime, and supports biasing recognition with a **Vocabulary** before any text exists, which is the mechanism this project relies on to get project-specific words right.
 Verified available on this machine, with the English **Speech Model** already present and 16 kHz mono as the working audio format.
 

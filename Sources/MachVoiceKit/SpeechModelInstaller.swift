@@ -3,6 +3,12 @@ import Speech
 import os.log
 
 /// Manages the installation of the en_US Speech Model.
+///
+/// Every probe and every installation request goes through `SpeechEngine
+/// .makeTranscriber`, so the asset inventory checked here is the one the
+/// analyzer will run against. `SpeechTranscriber` and `DictationTranscriber`
+/// keep separate inventories, and `SpeechTranscriber.isAvailable` is `true`
+/// on this machine regardless, so it says nothing about the module in use.
 @MainActor
 final class SpeechModelInstaller: ObservableObject {
     private let logger = Logger(subsystem: "com.augustomklee.MachVoice", category: "SpeechModelInstaller")
@@ -19,6 +25,10 @@ final class SpeechModelInstaller: ObservableObject {
     }
 
     /// Check if the model is already installed and install if needed.
+    ///
+    /// The status probe runs after the reservation on purpose:
+    /// `AssetInventory.status(forModules:)` reports `supported` until the
+    /// locale is reserved and `installed` once it is.
     func installIfNeeded() async {
         guard case .notStarted = installationState else { return }
 
@@ -69,6 +79,9 @@ final class SpeechModelInstaller: ObservableObject {
             // Create an installation request
             let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber])
 
+            // A nil request means the framework has nothing left to download
+            // for this module, which is the already-installed case rather than
+            // a failure.
             guard let request else {
                 installationState = .installed
                 logger.log("Speech model already available, nothing to download")

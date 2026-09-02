@@ -53,7 +53,7 @@ macOS 26.5, build 25F71.
 Swift 6.3.2, Xcode 26.5.
 `Package.swift` pins swift-tools 6.2, Swift language mode 6, and platform `.macOS(.v26)`.
 Three targets: the `MachVoiceKit` library holds every source file, the `MachVoice` executable holds only the entry point and depends on it, and `MachVoiceKitTests` tests `MachVoiceKit` with swift-testing.
-The English **Speech Model** is installed and 16 kHz mono is the working audio format.
+The English **Speech Model** is installed for `DictationTranscriber` and 16 kHz mono is the working audio format.
 
 **This repository builds on macOS and nowhere else.**
 `AppKit`, `SwiftUI`, `Speech`, `AVFoundation`, `ApplicationServices` and `CGEventTap` are Darwin-only, so `swift build` fails on the first import anywhere else.
@@ -83,6 +83,8 @@ Say so rather than working around it.
 `docs/adr/0001` has an update section recording the earlier `SpeechTranscriber` dead end: that module ignores `AnalysisContext` entirely, which is why the module changed.
 
 The Vocabulary window is still not built, so editing `vocabulary.json` directly is the only way to add a term today.
+That file is a JSON array of strings at `~/Library/Application Support/MachVoice/vocabulary.json`.
+Terms are compared case-sensitively, so `Ibiuna` and `ibiuna` are two separate terms rather than a duplicate.
 That path needs the app relaunched, because `VocabularyManager` reads the file once in `init` and nothing re-reads it afterwards.
 The History and Vocabulary menu items in `MachVoiceApp.swift` are `TODO` stubs that print and open nothing.
 
