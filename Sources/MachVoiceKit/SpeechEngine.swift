@@ -8,16 +8,22 @@ import os.log
 /// `finalizeAndFinishThroughEndOfInput()` and `cancelAndFinishNow()` permanently
 /// finish a `SpeechAnalyzer` instance, not just the current Utterance -- Apple's
 /// docs describe both as "finishes analysis." So a fresh `SpeechAnalyzer` and
-/// `SpeechTranscriber` pair is created for every Utterance. `ModelRetention
+/// `DictationTranscriber` pair is created for every Utterance. `ModelRetention
 /// .processLifetime` is what keeps the underlying model weights resident so
 /// each new analyzer's `prepareToAnalyze` stays cheap, per MVP.md's guidance
 /// that the model stays "resident between Utterances."
+///
+/// `DictationTranscriber`, not `SpeechTranscriber`, is the module used here.
+/// Apple's docs for `AnalysisContext.contextualStrings` scope that property to
+/// `DictationTranscriber` explicitly; `SpeechTranscriber` exposes no Vocabulary
+/// hook at all. `progressiveShortDictation` is also the closer preset for a
+/// push-to-talk Utterance: a single held-key phrase, not a long recording.
 @MainActor
 final class SpeechEngine: ObservableObject {
     private let logger = Logger(subsystem: "com.augustomklee.MachVoice", category: "SpeechEngine")
     private let locale: Locale
     private var analyzer: SpeechAnalyzer?
-    private var transcriber: SpeechTranscriber?
+    private var transcriber: DictationTranscriber?
     private var audioContinuation: AsyncStream<AnalyzerInput>.Continuation?
     private var analyzeTask: Task<Void, Never>?
     private var resultTask: Task<Void, Never>?
@@ -34,9 +40,17 @@ final class SpeechEngine: ObservableObject {
     /// other format crashes deep inside the Speech framework.
     let audioFormat: AVAudioFormat
 
+    /// The single module mach-voice recognises with. `SpeechModelInstaller`
+    /// probes and installs assets through this same call, because the two
+    /// modules keep separate asset inventories and a mismatch leaves the
+    /// analyzer with no installed model.
+    static func makeTranscriber(locale: Locale) -> DictationTranscriber {
+        DictationTranscriber(locale: locale, preset: .progressiveShortDictation)
+    }
+
     init(locale: Locale = Locale(identifier: "en_US")) async throws {
         self.locale = locale
-        let probeTranscriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+        let probeTranscriber = Self.makeTranscriber(locale: locale)
 
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [probeTranscriber]) else {
             throw SpeechEngineError.noAudioFormat
@@ -50,7 +64,7 @@ final class SpeechEngine: ObservableObject {
     /// carries forward.
     func prepare() async {
         do {
-            let warmupTranscriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+            let warmupTranscriber = Self.makeTranscriber(locale: locale)
             let options = SpeechAnalyzer.Options(priority: .medium, modelRetention: .processLifetime)
             let warmupAnalyzer = SpeechAnalyzer(modules: [warmupTranscriber], options: options)
 
@@ -65,11 +79,15 @@ final class SpeechEngine: ObservableObject {
     }
 
     /// Start a new Utterance: build a fresh analyzer/transcriber pair and
-    /// begin an audio stream for it.
-    func startAnalysis() {
-        let newTranscriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+    /// begin an audio stream for it. `vocabulary` is handed to this
+    /// Utterance's `AnalysisContext` before analysis begins, so a term added
+    /// to the Vocabulary takes effect on the very next Utterance.
+    func startAnalysis(vocabulary: [String]) {
+        let newTranscriber = Self.makeTranscriber(locale: locale)
         let options = SpeechAnalyzer.Options(priority: .medium, modelRetention: .processLifetime)
         let newAnalyzer = SpeechAnalyzer(modules: [newTranscriber], options: options)
+        let context = AnalysisContext()
+        context.contextualStrings[.general] = vocabulary
 
         analyzer = newAnalyzer
         transcriber = newTranscriber
@@ -101,6 +119,12 @@ final class SpeechEngine: ObservableObject {
 
         analyzeTask = Task { [weak self] in
             guard let self else { return }
+            do {
+                try await newAnalyzer.setContext(context)
+            } catch {
+                self.logger.error("Vocabulary not applied, continuing unbiased: \(error.localizedDescription, privacy: .public)")
+            }
+
             do {
                 try await newAnalyzer.prepareToAnalyze(in: self.audioFormat)
                 _ = try await newAnalyzer.analyzeSequence(stream)

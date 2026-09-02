@@ -32,7 +32,7 @@ Strand instead: clipboard, **History**, tell the speaker, and record in the **In
 A **Stranded Transcript** loses nothing and a duplicated one silently corrupts.
 A future reader will be tempted to fix the first-**Utterance** strand by retrying, and that is the outcome this design exists to prevent.
 
-**Construct a fresh `SpeechAnalyzer` and `SpeechTranscriber` for every Utterance.**
+**Construct a fresh `SpeechAnalyzer` and `DictationTranscriber` for every Utterance.**
 `docs/adr/0001` and the comment at the top of `SpeechEngine.swift`.
 `finalizeAndFinishThroughEndOfInput()` and `cancelAndFinishNow()` finish the analyzer permanently and not merely the current **Utterance**, so a reused analyzer is dead after the first one.
 `ModelRetention.processLifetime` is what keeps the model weights resident, so a fresh analyzer per **Utterance** stays cheap.
@@ -44,8 +44,10 @@ Right Command is the **Dictation Key** and the event tap consumes it so no other
 Testing the generic Command flag would open an **Utterance** inside every left-hand Command-S.
 If macOS disables the tap for being slow, the key silently reverts to an ordinary Command mid-**Utterance**, so the tap-disabled event must be handled and the tap re-armed.
 
-Recognition sits behind a single-method protocol on purpose, so that `docs/adr/0001` can be revisited for about a day's work.
-Do not remove that indirection as unnecessary.
+Recognition is meant to sit behind a single-method protocol, so that `docs/adr/0001` can be revisited for about a day's work.
+That protocol is not built: no `protocol` is declared anywhere in `Sources/`, and `UtteranceController` holds the concrete `SpeechEngine` class directly.
+What stands in for it is `SpeechEngine.makeTranscriber`, the only place the recognition module is constructed, which is why `SpeechModelInstaller` probes the asset inventory through that call instead of naming the module itself.
+Keep that single construction site, and do not read the missing protocol as licence to name the module in the callers.
 
 ## The environment, probed off the machine
 
@@ -53,7 +55,7 @@ macOS 26.5, build 25F71.
 Swift 6.3.2, Xcode 26.5.
 `Package.swift` pins swift-tools 6.2, Swift language mode 6, and platform `.macOS(.v26)`.
 Three targets: the `MachVoiceKit` library holds every source file, the `MachVoice` executable holds only the entry point and depends on it, and `MachVoiceKitTests` tests `MachVoiceKit` with swift-testing.
-The English **Speech Model** is installed and 16 kHz mono is the working audio format.
+The English **Speech Model** is installed for `DictationTranscriber` and 16 kHz mono is the working audio format.
 
 **This repository builds on macOS and nowhere else.**
 `AppKit`, `SwiftUI`, `Speech`, `AVFoundation`, `ApplicationServices` and `CGEventTap` are Darwin-only, so `swift build` fails on the first import anywhere else.
@@ -79,9 +81,13 @@ Both are pinned in the `Makefile` on purpose, so do not change them to make a bu
 
 Say so rather than working around it.
 
-`VocabularyManager` persists terms to `vocabulary.json` and its terms never reach the transcriber.
-`contextualStrings` appears in no source file, so `docs/adr/0001`'s stated reason for choosing Apple over Parakeet is currently unbacked by code.
+`VocabularyManager` persists terms to `vocabulary.json`, and `SpeechEngine.startAnalysis(vocabulary:)` hands them to `AnalysisContext.contextualStrings[.general]` before every Utterance's `DictationTranscriber` is built, so a term added through `VocabularyManager.add` takes effect on the next Utterance.
+`docs/adr/0001` has an update section recording the earlier `SpeechTranscriber` dead end: that module ignores `AnalysisContext` entirely, which is why the module changed.
 
+The Vocabulary window is still not built, so editing `vocabulary.json` directly is the only way to add a term today.
+That file is a JSON array of strings at `~/Library/Application Support/MachVoice/vocabulary.json`.
+Terms are compared case-sensitively, so `Ibiuna` and `ibiuna` are two separate terms rather than a duplicate.
+That path needs the app relaunched, because `VocabularyManager` reads the file once in `init` and nothing re-reads it afterwards.
 The History and Vocabulary menu items in `MachVoiceApp.swift` are `TODO` stubs that print and open nothing.
 
 `InjectionService.attemptAccessibility` returns `nil` when the read-back is unreadable and the caller falls through to paste in the same **Utterance**.
@@ -116,4 +122,4 @@ Do not test the generic Command flag in the event tap.
 Do not change the bundle identifier or the signing identity.
 Do not report a change as built, tested or demonstrated from a Linux container, which cannot do any of the three.
 Do not introduce after-the-fact string replacement on a **Transcript** and call it **Vocabulary**.
-Do not remove the protocol wrapper around recognition.
+Do not construct the recognition module anywhere but `SpeechEngine.makeTranscriber`.

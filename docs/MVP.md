@@ -25,11 +25,11 @@ Do not re-derive them and do not assume a different macOS version.
 | macOS | 26.5 (build 25F71) |
 | Hardware | Apple M5, 10 cores, 24 GB |
 | Toolchain | Xcode 26.5, Swift 6.3.2 |
-| `SpeechTranscriber.isAvailable` | `true` |
+| Recognition module | `DictationTranscriber`, per the update section of `docs/adr/0001` |
 | Supported locales | 30 |
-| Installed locales | 9 English variants, including `en_US` |
+| Installed locales | 9 English variants for `SpeechTranscriber`, `en_US` for `DictationTranscriber` |
 | Reserved locales | none, maximum 5 |
-| Asset status for `en_US` | `supported`, not `installed` |
+| Asset status for `en_US` | `supported` for both modules before `AssetInventory.reserve(locale:)`, `installed` for both after it |
 | Best available audio format | 16000 Hz, mono |
 | Foundation Models | available (Apple Intelligence is enabled) |
 | Codesigning identity | `Apple Development: augusto.leee@gmail.com (X8QN7RE5WN)`, team `VGZMWWL5C4` |
@@ -42,17 +42,22 @@ That is expected and is not an error condition.
 All of the following exist in the macOS 26.5 SDK and were read from the installed `.swiftinterface`, not recalled from memory.
 
 Recognition is driven by `SpeechAnalyzer`, an actor that hosts one or more modules.
-Use `SpeechTranscriber` as the module, constructed with `init(locale:preset:)`.
+Use `DictationTranscriber` as the module, constructed with `init(locale:preset:)`.
+`SpeechTranscriber` is the other module in the framework and it is the wrong one here, because it ignores `AnalysisContext` and so has no **Vocabulary** hook at all.
 
 - `SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith:)` gives the format to convert microphone input to.
 - `prepareToAnalyze(in:)` warms the model. Call it at launch so the first Utterance does not pay the cost.
 - `SpeechAnalyzer.Options(priority:modelRetention:)` with `ModelRetention.processLifetime` keeps the model resident between Utterances.
-- `SpeechTranscriber.Preset.progressiveTranscription` plus `ReportingOption.volatileResults` and `.fastResults` streams partial results while the user is still speaking.
+- `DictationTranscriber.Preset.progressiveShortDictation` streams partial results while the user is still speaking. It bundles `ReportingOption.volatileResults` and `.frequentFinalization`, `TranscriptionOption.punctuation`, and the `ContentHint.shortForm` that suits a held-key Utterance.
 - `finalizeAndFinishThroughEndOfInput()` closes an Utterance on key release.
 - `cancelAndFinishNow()` discards one, for the Escape path.
-- Results arrive as an `AsyncSequence` of `SpeechTranscriber.Result`, whose `text` is an `AttributedString`.
-- `AnalysisContext.contextualStrings[.general]` carries the **Vocabulary**.
+- Results arrive as an `AsyncSequence` of `DictationTranscriber.Result`, whose `text` is an `AttributedString` and whose `isFinal` comes from the `SpeechModuleResult` extension.
+- `AnalysisContext.contextualStrings[.general]` carries the **Vocabulary**, and `SpeechAnalyzer.setContext(_:)` hands it over before analysis begins.
 - `AssetInventory.reserve(locale:)`, `AssetInventory.status(forModules:)` and `assetInstallationRequest(supporting:)` handle model installation, and `AssetInstallationRequest` exposes a `Progress` plus `downloadAndInstall()`.
+
+The two modules keep separate asset inventories, so probe and install for the same module the analyzer will run.
+`DictationTranscriber` has no `isAvailable`, and `SpeechTranscriber.isAvailable` says nothing about whether the dictation assets are present.
+`AssetInventory.status(forModules:)` is the check that answers for the module actually in use.
 
 `SpeechDetector` also exists for voice activity detection.
 It is out of scope for the MVP but is the natural tool if silence trimming is wanted later.

@@ -54,7 +54,7 @@ final class UtteranceController: ObservableObject {
         currentTarget = Target.capture()
         logger.log("Utterance started, target bundleID=\(self.currentTarget?.bundleIdentifier ?? "nil", privacy: .public)")
         indicator.show()
-        speechEngine.startAnalysis()
+        speechEngine.startAnalysis(vocabulary: vocabulary.allTerms)
 
         audioCapture = AudioCapture(targetFormat: speechEngine.audioFormat)
         audioCapture?.onBuffer = { [weak self] buffer in
