@@ -90,10 +90,6 @@ Terms are compared case-sensitively, so `Ibiuna` and `ibiuna` are two separate t
 That path needs the app relaunched, because `VocabularyManager` reads the file once in `init` and nothing re-reads it afterwards.
 The History and Vocabulary menu items in `MachVoiceApp.swift` are `TODO` stubs that print and open nothing.
 
-`InjectionService.attemptAccessibility` returns `nil` when the read-back is unreadable and the caller falls through to paste in the same **Utterance**.
-The comment in the file admits this diverges from `docs/adr/0002`, which requires a hard strand there.
-The code is what is wrong, not the decision record.
-
 There is a test target, `MachVoiceKitTests`, but no continuous integration.
 
 ## Definition of done

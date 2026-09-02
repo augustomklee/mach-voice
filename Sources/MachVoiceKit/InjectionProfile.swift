@@ -6,12 +6,15 @@ final class InjectionProfile: ObservableObject {
     private var profiles: [String: InjectionMechanism] = [:]
     private let storageURL: URL
 
-    init() {
+    convenience init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = appSupport.appendingPathComponent("MachVoice")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        storageURL = dir.appendingPathComponent("injection-profile.json")
+        self.init(storageURL: dir.appendingPathComponent("injection-profile.json"))
+    }
 
+    init(storageURL: URL) {
+        self.storageURL = storageURL
         load()
     }
 
@@ -24,6 +27,12 @@ final class InjectionProfile: ObservableObject {
     func learn(bundleIdentifier: String, mechanism: InjectionMechanism) {
         profiles[bundleIdentifier] = mechanism
         save()
+    }
+
+    /// Record that an app's Accessibility read-back cannot be trusted, so every
+    /// later Utterance there goes straight to paste (docs/adr/0002).
+    func markUnverifiable(bundleIdentifier: String) {
+        learn(bundleIdentifier: bundleIdentifier, mechanism: .paste)
     }
 
     private func load() {
