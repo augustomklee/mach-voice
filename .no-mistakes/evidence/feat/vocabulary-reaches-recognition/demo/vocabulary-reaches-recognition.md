@@ -1,5 +1,8 @@
 # Vocabulary reaches recognition - demo evidence
 
+The launch gate in `SpeechModelInstaller` is captured separately, in
+`speech-model-install-gate.md`.
+
 Captured from the running app (`make run`, real entry point) via
 `log stream --predicate 'subsystem == "com.augustomklee.MachVoice"'` while a
 person held the Dictation Key and spoke, on macOS 26.5 / Xcode 26.5.

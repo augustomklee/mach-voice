@@ -1,9 +1,11 @@
 import Foundation
 import Speech
+import os.log
 
 /// Manages the installation of the en_US Speech Model.
 @MainActor
 final class SpeechModelInstaller: ObservableObject {
+    private let logger = Logger(subsystem: "com.augustomklee.MachVoice", category: "SpeechModelInstaller")
     @Published private(set) var installationState: InstallationState = .notStarted
     @Published private(set) var progress: Double = 0.0
 
@@ -29,9 +31,14 @@ final class SpeechModelInstaller: ObservableObject {
 
         // Check if already installed
         let status = await AssetInventory.status(forModules: [SpeechEngine.makeTranscriber(locale: locale)])
+        if status == .unsupported {
+            installationState = .failed("Speech model is not supported for \(locale.identifier)")
+            logger.error("Speech model unsupported for \(self.locale.identifier, privacy: .public)")
+            return
+        }
         if status == .installed {
             installationState = .installed
-            print("Speech model already available")
+            logger.log("Speech model already available")
             return
         }
 
@@ -43,10 +50,10 @@ final class SpeechModelInstaller: ObservableObject {
     private func reserveLocale() async -> Bool {
         do {
             try await AssetInventory.reserve(locale: locale)
-            print("Reserved locale: \(locale.identifier)")
+            logger.log("Reserved locale: \(self.locale.identifier, privacy: .public)")
             return true
         } catch {
-            print("Failed to reserve locale: \(error)")
+            logger.error("Failed to reserve locale: \(error.localizedDescription, privacy: .public)")
             return false
         }
     }
@@ -63,7 +70,8 @@ final class SpeechModelInstaller: ObservableObject {
             let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber])
 
             guard let request else {
-                installationState = .failed("Asset installation request is not available")
+                installationState = .installed
+                logger.log("Speech model already available, nothing to download")
                 return
             }
 
@@ -78,11 +86,11 @@ final class SpeechModelInstaller: ObservableObject {
             try await request.downloadAndInstall()
             observation.invalidate()
             installationState = .installed
-            print("Speech model installed successfully")
+            logger.log("Speech model installed successfully")
 
         } catch {
             installationState = .failed(error.localizedDescription)
-            print("Failed to install Speech model: \(error)")
+            logger.error("Failed to install Speech model: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

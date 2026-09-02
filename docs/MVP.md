@@ -29,7 +29,7 @@ Do not re-derive them and do not assume a different macOS version.
 | Supported locales | 30 |
 | Installed locales | 9 English variants for `SpeechTranscriber`, `en_US` for `DictationTranscriber` |
 | Reserved locales | none, maximum 5 |
-| Asset status for `en_US` | `supported`, not `installed` |
+| Asset status for `en_US` | `supported` for both modules before `AssetInventory.reserve(locale:)`, `installed` for both after it |
 | Best available audio format | 16000 Hz, mono |
 | Foundation Models | available (Apple Intelligence is enabled) |
 | Codesigning identity | `Apple Development: augusto.leee@gmail.com (X8QN7RE5WN)`, team `VGZMWWL5C4` |
