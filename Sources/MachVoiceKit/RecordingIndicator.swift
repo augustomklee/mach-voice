@@ -72,10 +72,12 @@ final class RecordingIndicator {
     private var window: NSPanel?
     private let state = RecordingIndicatorState()
     private var dismissal: Task<Void, Never>?
+    private var utteranceIsLive = false
 
     /// Show the indicator for a new Utterance.
     func show() {
         dismissal?.cancel()
+        utteranceIsLive = true
         state.transcript = ""
         state.audioLevel = 0
         state.message = nil
@@ -88,6 +90,10 @@ final class RecordingIndicator {
     /// `hide()` has already run by the time a Transcript arrives, so this
     /// rebuilds the panel rather than expecting one to exist, and `show()`
     /// for the next Utterance cancels the pending dismissal.
+    ///
+    /// A late Transcript can also strand *after* the next Utterance has begun,
+    /// so the dismissal only clears the message; it hides the panel solely when
+    /// no Utterance is live, leaving the waveform and Draft to come back.
     func announce(_ message: String, for duration: Duration = .seconds(3)) {
         dismissal?.cancel()
         state.message = message
@@ -95,8 +101,10 @@ final class RecordingIndicator {
 
         dismissal = Task { @MainActor [weak self] in
             try? await Task.sleep(for: duration)
-            guard !Task.isCancelled else { return }
-            self?.hide()
+            guard !Task.isCancelled, let self else { return }
+            self.state.message = nil
+            guard !self.utteranceIsLive else { return }
+            self.hide()
         }
     }
 
@@ -142,6 +150,7 @@ final class RecordingIndicator {
 
     /// Hide the indicator.
     func hide() {
+        utteranceIsLive = false
         window?.orderOut(nil)
         window = nil
     }

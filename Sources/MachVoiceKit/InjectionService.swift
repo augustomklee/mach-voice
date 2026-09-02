@@ -11,6 +11,11 @@ final class InjectionService: ObservableObject {
     private let pasteboard: NSPasteboard
     private let postEvent: @MainActor (CGEvent) -> Void
 
+    /// The nspasteboard.org marker that asks clipboard managers not to keep a
+    /// copy of what passes through, so a Transcript does not outlive its
+    /// Retention Window somewhere outside mach-voice.
+    private static let concealed = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+
     /// The result of an injection attempt.
     enum InjectionResult {
         case success(mechanism: InjectionMechanism)
@@ -74,7 +79,7 @@ final class InjectionService: ObservableObject {
     /// Bumping the pasteboard's change count is also what stops a pending
     /// paste restore from overwriting it: see `attemptPaste`.
     func keepOnClipboard(_ text: String) {
-        pasteboard.declareTypes([.string], owner: nil)
+        pasteboard.declareTypes([.string, Self.concealed], owner: nil)
         pasteboard.setString(text, forType: .string)
         logger.log("keepOnClipboard: Stranded Transcript placed on the clipboard")
     }
@@ -124,7 +129,10 @@ final class InjectionService: ObservableObject {
             return .success(mechanism: .accessibility)
         }
 
-        // Restore original value; we know the write happened but did not stick correctly.
+        // Restore the original value. Best-effort against a state this branch
+        // does not know: the read-back may have been unreadable, so whether the
+        // Transcript reached the Target is unknown, and this write cannot be
+        // verified either.
         _ = field.write(originalValue)
 
         guard readable else {
@@ -135,7 +143,7 @@ final class InjectionService: ObservableObject {
         return nil
     }
 
-    /// Try paste injection, marking pasteboard as transient.
+    /// Try paste injection, marking the pasteboard concealed.
     ///
     /// Paste does not require a readable Accessibility element or a known
     /// application identity: Cmd+V is delivered by the system to whatever
@@ -147,8 +155,8 @@ final class InjectionService: ObservableObject {
         let oldString = pasteboard.string(forType: .string)
         let oldTypes = pasteboard.types
 
-        // Set the pasteboard with the new text and mark as transient/concealed
-        pasteboard.declareTypes([.string], owner: nil)
+        // Set the pasteboard with the new text and mark it concealed
+        pasteboard.declareTypes([.string, Self.concealed], owner: nil)
         pasteboard.setString(text, forType: .string)
         let ourChangeCount = pasteboard.changeCount
 
