@@ -1,0 +1,3 @@
+import MachVoiceKit
+
+MachVoiceApp.main()

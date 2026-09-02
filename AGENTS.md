@@ -52,7 +52,7 @@ Do not remove that indirection as unnecessary.
 macOS 26.5, build 25F71.
 Swift 6.3.2, Xcode 26.5.
 `Package.swift` pins swift-tools 6.2, Swift language mode 6, and platform `.macOS(.v26)`.
-One executable target, `Sources/MachVoice`, and no test target yet.
+Three targets: the `MachVoiceKit` library holds every source file, the `MachVoice` executable holds only the entry point and depends on it, and `MachVoiceKitTests` tests `MachVoiceKit` with swift-testing.
 The English **Speech Model** is installed and 16 kHz mono is the working audio format.
 
 **This repository builds on macOS and nowhere else.**
@@ -88,7 +88,7 @@ The History and Vocabulary menu items in `MachVoiceApp.swift` are `TODO` stubs t
 The comment in the file admits this diverges from `docs/adr/0002`, which requires a hard strand there.
 The code is what is wrong, not the decision record.
 
-There is no test target and no continuous integration.
+There is a test target, `MachVoiceKitTests`, but no continuous integration.
 
 ## Definition of done
 

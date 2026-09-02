@@ -2,18 +2,17 @@ import AppKit
 import SwiftUI
 import os.log
 
-@main
-struct MachVoiceApp: App {
+public struct MachVoiceApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var permissions = Permissions()
     @State private var modelInstaller = SpeechModelInstaller()
 
-    init() {
+    public init() {
         // Share the model installer with the app delegate
         _delegate.wrappedValue.modelInstaller = modelInstaller
     }
 
-    var body: some Scene {
+    public var body: some Scene {
         MenuBarExtra {
             StatusMenu(permissions: permissions, modelInstaller: modelInstaller)
         } label: {
