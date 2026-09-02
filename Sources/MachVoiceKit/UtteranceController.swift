@@ -96,6 +96,12 @@ final class UtteranceController: ObservableObject {
             return
         }
 
+        // Abandoned Utterance: no words
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            logger.log("Abandoned utterance, no words")
+            return
+        }
+
         guard let target = currentTarget else {
             logger.log("No Target captured")
             strand(text)
