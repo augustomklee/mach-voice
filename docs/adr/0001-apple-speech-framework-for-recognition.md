@@ -1,7 +1,7 @@
-# Apple SpeechTranscriber for recognition
+# Apple Speech framework for recognition
 
-The module named in this title is now `DictationTranscriber`, and the update section at the end records why.
-Everything else in this record still stands.
+The module is `DictationTranscriber`.
+This record was written for `SpeechTranscriber`, and the update section at the end records why the module changed.
 
 mach-voice uses the Speech framework's on-device recognition rather than a downloaded model such as Parakeet or Whisper.
 It runs entirely on the machine, costs nothing, needs no third-party runtime, and supports biasing recognition with a **Vocabulary** before any text exists, which is the mechanism this project relies on to get project-specific words right.
@@ -15,8 +15,10 @@ It was rejected because it adds a model download, a runtime, and a second thing 
 
 ## Consequences
 
-Recognition is wrapped behind a single-method protocol so swapping engines stays about a day's work rather than a rewrite.
-That wrapper exists specifically so this decision can be revisited cheaply, and it should not be removed as unnecessary indirection.
+Swapping the recognition module has to stay about a day's work rather than a rewrite, so that this decision can be revisited cheaply.
+The single-method protocol meant to hold that seam is not built: `SpeechEngine` is a concrete class and `UtteranceController` holds it directly.
+What keeps the cost low today is `SpeechEngine.makeTranscriber`, the only place the module is constructed, which `SpeechModelInstaller` also probes the asset inventory through rather than naming the module itself.
+Adding the protocol is still worth doing, and until it exists that one construction site is what this consequence rests on.
 
 ## Update: DictationTranscriber, not SpeechTranscriber
 

@@ -44,8 +44,10 @@ Right Command is the **Dictation Key** and the event tap consumes it so no other
 Testing the generic Command flag would open an **Utterance** inside every left-hand Command-S.
 If macOS disables the tap for being slow, the key silently reverts to an ordinary Command mid-**Utterance**, so the tap-disabled event must be handled and the tap re-armed.
 
-Recognition sits behind a single-method protocol on purpose, so that `docs/adr/0001` can be revisited for about a day's work.
-Do not remove that indirection as unnecessary.
+Recognition is meant to sit behind a single-method protocol, so that `docs/adr/0001` can be revisited for about a day's work.
+That protocol is not built: no `protocol` is declared anywhere in `Sources/`, and `UtteranceController` holds the concrete `SpeechEngine` class directly.
+What stands in for it is `SpeechEngine.makeTranscriber`, the only place the recognition module is constructed, which is why `SpeechModelInstaller` probes the asset inventory through that call instead of naming the module itself.
+Keep that single construction site, and do not read the missing protocol as licence to name the module in the callers.
 
 ## The environment, probed off the machine
 
@@ -120,4 +122,4 @@ Do not test the generic Command flag in the event tap.
 Do not change the bundle identifier or the signing identity.
 Do not report a change as built, tested or demonstrated from a Linux container, which cannot do any of the three.
 Do not introduce after-the-fact string replacement on a **Transcript** and call it **Vocabulary**.
-Do not remove the protocol wrapper around recognition.
+Do not construct the recognition module anywhere but `SpeechEngine.makeTranscriber`.
