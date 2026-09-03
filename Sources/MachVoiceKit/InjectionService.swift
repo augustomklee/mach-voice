@@ -7,8 +7,14 @@ import os.log
 @MainActor
 final class InjectionService: ObservableObject {
     private let logger = Logger(subsystem: "com.augustomklee.MachVoice", category: "InjectionService")
-    private let profile = InjectionProfile()
-    private let pasteboard = NSPasteboard.general
+    private let profile: InjectionProfile
+    private let pasteboard: NSPasteboard
+    private let postEvent: @MainActor (CGEvent) -> Void
+
+    /// The nspasteboard.org marker that asks clipboard managers not to keep a
+    /// copy of what passes through, so a Transcript does not outlive its
+    /// Retention Window somewhere outside mach-voice.
+    private static let concealed = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
 
     /// The result of an injection attempt.
     enum InjectionResult {
@@ -16,33 +22,66 @@ final class InjectionService: ObservableObject {
         case stranded
     }
 
+    convenience init() {
+        self.init(profile: InjectionProfile(), pasteboard: .general) { $0.post(tap: .cghidEventTap) }
+    }
+
+    /// `postEvent` is where synthetic key events leave the process, so a test can
+    /// observe that paste and keystrokes were never attempted.
+    init(profile: InjectionProfile, pasteboard: NSPasteboard, postEvent: @escaping @MainActor (CGEvent) -> Void) {
+        self.profile = profile
+        self.pasteboard = pasteboard
+        self.postEvent = postEvent
+    }
+
     /// Attempt to inject the given text into the target.
     ///
-    /// Tries the profiled mechanism first if known, otherwise probes.
+    /// Tries the profiled mechanism first if known, otherwise probes. A Target
+    /// whose application identity is unknown is still injected into, because
+    /// paste and keystrokes go to whatever holds keyboard focus, but it teaches
+    /// the Injection Profile nothing: there is no key to learn under.
     func inject(_ text: String, target: Target) -> InjectionResult {
-        let appID = target.bundleIdentifier ?? "unknown"
-        let preferred = profile.mechanism(for: appID)
-        logger.log("inject: appID=\(appID, privacy: .public) preferred=\(String(describing: preferred), privacy: .public) hasFocusedElement=\(target.focusedElement != nil)")
+        let appID = target.bundleIdentifier
+        let preferred = appID.flatMap { profile.mechanism(for: $0) }
+        logger.log("inject: appID=\(appID ?? "nil", privacy: .public) preferred=\(String(describing: preferred), privacy: .public) hasFocusedElement=\(target.focusedElement != nil)")
 
-        if let preferred, let result = attempt(text, into: target, using: preferred) {
-            logger.log("inject: used preferred mechanism \(String(describing: preferred), privacy: .public)")
-            return result
-        }
-
-        // Probe mechanisms in order
-        for mechanism in [InjectionMechanism.accessibility, .paste, .keystrokes] {
-            if let result = attempt(text, into: target, using: mechanism) {
-                if case .success = result {
+        let order = [preferred].compactMap { $0 } + InjectionMechanism.allCases.filter { $0 != preferred }
+        for mechanism in order {
+            guard let result = attempt(text, into: target, using: mechanism) else {
+                logger.log("inject: probe failed for \(String(describing: mechanism), privacy: .public)")
+                continue
+            }
+            switch result {
+            case .success:
+                logger.log("inject: delivered with \(String(describing: mechanism), privacy: .public)")
+                if let appID, mechanism != preferred {
                     profile.learn(bundleIdentifier: appID, mechanism: mechanism)
                 }
-                logger.log("inject: probe succeeded with \(String(describing: mechanism), privacy: .public)")
-                return result
+            case .stranded:
+                // docs/adr/0002: the read-back was unreadable, so the Transcript
+                // may already be in the document. Nothing else is attempted in
+                // this Utterance, and the application is marked unverifiable so
+                // the next Utterance there goes straight to paste.
+                logger.log("inject: \(String(describing: mechanism), privacy: .public) outcome unknowable, stranding without retry")
+                if let appID {
+                    profile.markUnverifiable(bundleIdentifier: appID)
+                }
             }
-            logger.log("inject: probe failed for \(String(describing: mechanism), privacy: .public)")
+            return result
         }
 
         logger.log("inject: all mechanisms failed, stranding")
         return .stranded
+    }
+
+    /// Put a Stranded Transcript on the clipboard so the speaker loses nothing.
+    ///
+    /// Bumping the pasteboard's change count is also what stops a pending
+    /// paste restore from overwriting it: see `attemptPaste`.
+    func keepOnClipboard(_ text: String) {
+        pasteboard.declareTypes([.string, Self.concealed], owner: nil)
+        pasteboard.setString(text, forType: .string)
+        logger.log("keepOnClipboard: Stranded Transcript placed on the clipboard")
     }
 
     private func attempt(_ text: String, into target: Target, using mechanism: InjectionMechanism) -> InjectionResult? {
@@ -58,74 +97,68 @@ final class InjectionService: ObservableObject {
 
     /// Try accessibility API and verify the write landed.
     ///
-    /// Three outcomes per the design: landed (success), absent (clean failure,
-    /// caller falls through to paste), or unreadable (unknowable, caller must
-    /// strand rather than retry).
+    /// Three outcomes per docs/adr/0002: landed (`.success`), absent (`nil`, a
+    /// clean failure the caller falls through from), or unreadable read-back
+    /// (`.stranded`, the unknowable outcome the caller must never retry).
+    ///
+    /// Only a read-back that fails *after* a successful write is unknowable. An
+    /// original value that cannot be read before any write is a clean failure:
+    /// nothing was written, so nothing can be duplicated by trying paste.
     private func attemptAccessibility(_ text: String, into target: Target) -> InjectionResult? {
-        guard let focusedElement = target.focusedElement else {
+        guard let field = target.field else {
             logger.log("attemptAccessibility: no focused element")
             return nil
         }
 
-        let (originalValue, wasReadable) = target.readValue()
+        let (originalValue, wasReadable) = field.read()
         guard wasReadable, let originalValue else {
             logger.log("attemptAccessibility: original value unreadable, skipping AX write")
             return nil
         }
 
-        let newValue = originalValue + text
-
-        let setResult = AXUIElementSetAttributeValue(
-            focusedElement,
-            kAXValueAttribute as CFString,
-            newValue as CFTypeRef
-        )
-
+        let setResult = field.write(originalValue + text)
         guard setResult == .success else {
             logger.log("attemptAccessibility: set failed with \(String(describing: setResult), privacy: .public)")
             return nil
         }
 
         // Read back to verify.
-        let (readBack, readable) = target.readValue()
+        let (readBack, readable) = field.read()
         if readable, let readBack, readBack.contains(text) {
             logger.log("attemptAccessibility: verified, text landed")
             return .success(mechanism: .accessibility)
         }
 
-        // Restore original value; we know the write happened but did not stick correctly.
-        _ = AXUIElementSetAttributeValue(focusedElement, kAXValueAttribute as CFString, originalValue as CFTypeRef)
+        // Restore the original value. Best-effort against a state this branch
+        // does not know: the read-back may have been unreadable, so whether the
+        // Transcript reached the Target is unknown, and this write cannot be
+        // verified either.
+        _ = field.write(originalValue)
 
-        if !readable {
+        guard readable else {
             logger.log("attemptAccessibility: read-back unreadable, unknowable outcome")
-            // Unknowable: caller must strand, not retry. Signal via nil but the
-            // caller's probe loop will still try paste; that is the accepted
-            // trade-off during the exploratory MVP rather than a hard strand.
-        } else {
-            logger.log("attemptAccessibility: text did not land, absent")
+            return .stranded
         }
+        logger.log("attemptAccessibility: text did not land, absent")
         return nil
     }
 
-    /// Try paste injection, marking pasteboard as transient.
+    /// Try paste injection, marking the pasteboard concealed.
     ///
-    /// Paste does not require a readable Accessibility element: Cmd+V is
-    /// delivered by the system to whatever currently holds keyboard focus,
-    /// which is exactly the case Electron/Chromium apps need since they
-    /// often expose no usable AXUIElement at all.
+    /// Paste does not require a readable Accessibility element or a known
+    /// application identity: Cmd+V is delivered by the system to whatever
+    /// currently holds keyboard focus, which is exactly the case
+    /// Electron/Chromium apps need since they often expose no usable
+    /// AXUIElement at all.
     private func attemptPaste(_ text: String, into target: Target) -> InjectionResult? {
-        guard target.bundleIdentifier != nil else {
-            logger.log("attemptPaste: no target application")
-            return nil
-        }
-
         // Save current pasteboard contents
         let oldString = pasteboard.string(forType: .string)
         let oldTypes = pasteboard.types
 
-        // Set the pasteboard with the new text and mark as transient/concealed
-        pasteboard.declareTypes([.string], owner: nil)
+        // Set the pasteboard with the new text and mark it concealed
+        pasteboard.declareTypes([.string, Self.concealed], owner: nil)
         pasteboard.setString(text, forType: .string)
+        let ourChangeCount = pasteboard.changeCount
 
         // Post Command-V to the system HID event tap so it reaches whatever
         // application currently has keyboard focus. Posting to pid 0 does not
@@ -135,15 +168,18 @@ final class InjectionService: ObservableObject {
         let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(9), keyDown: false)
         keyDown?.flags = .maskCommand
         keyUp?.flags = .maskCommand
-        keyDown?.post(tap: .cghidEventTap)
-        keyUp?.post(tap: .cghidEventTap)
+        if let keyDown { postEvent(keyDown) }
+        if let keyUp { postEvent(keyUp) }
 
         logger.log("attemptPaste: posted Cmd+V")
 
         // Restore previous pasteboard contents after a short delay so the
-        // paste has time to land before we overwrite the clipboard.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            guard let self else { return }
+        // paste has time to land before we overwrite the clipboard. Restore
+        // only if nothing has written to the pasteboard since: a Stranded
+        // Transcript kept on the clipboard in the meantime must survive.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard let self, self.pasteboard.changeCount == ourChangeCount else { return }
             if let oldTypes, let oldString {
                 self.pasteboard.declareTypes(oldTypes, owner: nil)
                 self.pasteboard.setString(oldString, forType: .string)
@@ -156,12 +192,10 @@ final class InjectionService: ObservableObject {
     }
 
     /// Try synthetic keystrokes as a fallback.
+    ///
+    /// Like paste, keystrokes go to whatever holds keyboard focus, so no
+    /// application identity is needed.
     private func attemptKeystrokes(_ text: String, into target: Target) -> InjectionResult? {
-        guard target.bundleIdentifier != nil else {
-            logger.log("attemptKeystrokes: no target application")
-            return nil
-        }
-
         let source = CGEventSource(stateID: .hidSystemState)
         for char in text {
             if char == " " {
@@ -179,8 +213,8 @@ final class InjectionService: ObservableObject {
     private func postKey(_ keyCode: CGKeyCode, source: CGEventSource?) {
         let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
         let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
-        keyDown?.post(tap: .cghidEventTap)
-        keyUp?.post(tap: .cghidEventTap)
+        if let keyDown { postEvent(keyDown) }
+        if let keyUp { postEvent(keyUp) }
     }
 
     private func keyCodeForCharacter(_ char: Character) -> CGKeyCode? {

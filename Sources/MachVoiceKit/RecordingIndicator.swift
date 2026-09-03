@@ -7,9 +7,12 @@ import Foundation
 final class RecordingIndicatorState: ObservableObject {
     @Published var transcript: String = ""
     @Published var audioLevel: CGFloat = 0
+    /// A message shown in place of the waveform and Draft once the Utterance has ended.
+    @Published var message: String?
 }
 
-/// The recording indicator's content: an animated waveform plus the current Draft.
+/// The indicator's content: an animated waveform plus the current Draft,
+/// or a message on its own.
 private struct RecordingIndicatorView: View {
     @ObservedObject var state: RecordingIndicatorState
 
@@ -17,23 +20,32 @@ private struct RecordingIndicatorView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 5) {
-                ForEach(Array(Self.barWeights.enumerated()), id: \.offset) { index, weight in
-                    Capsule()
-                        .fill(Color.white)
-                        .frame(width: 4, height: barHeight(weight: weight))
-                        .animation(.easeOut(duration: 0.12), value: state.audioLevel)
+            if let message = state.message {
+                Label(message, systemImage: "doc.on.clipboard")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
+            } else {
+                HStack(spacing: 5) {
+                    ForEach(Array(Self.barWeights.enumerated()), id: \.offset) { index, weight in
+                        Capsule()
+                            .fill(Color.white)
+                            .frame(width: 4, height: barHeight(weight: weight))
+                            .animation(.easeOut(duration: 0.12), value: state.audioLevel)
+                    }
                 }
-            }
-            .frame(height: 28)
+                .frame(height: 28)
 
-            Text(state.transcript.isEmpty ? "Listening…" : state.transcript)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.white)
-                .lineLimit(2)
-                .truncationMode(.head)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 360)
+                Text(state.transcript.isEmpty ? "Listening…" : state.transcript)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .truncationMode(.head)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
+            }
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 16)
@@ -59,12 +71,44 @@ private struct RecordingIndicatorView: View {
 final class RecordingIndicator {
     private var window: NSPanel?
     private let state = RecordingIndicatorState()
+    private var dismissal: Task<Void, Never>?
+    private var utteranceIsLive = false
 
-    /// Show the indicator.
+    /// Show the indicator for a new Utterance.
     func show() {
+        dismissal?.cancel()
+        utteranceIsLive = true
         state.transcript = ""
         state.audioLevel = 0
+        state.message = nil
 
+        presentPanel()
+    }
+
+    /// Show a message after the Utterance has ended, then dismiss it.
+    ///
+    /// `hide()` has already run by the time a Transcript arrives, so this
+    /// rebuilds the panel rather than expecting one to exist, and `show()`
+    /// for the next Utterance cancels the pending dismissal.
+    ///
+    /// A late Transcript can also strand *after* the next Utterance has begun,
+    /// so the dismissal only clears the message; it hides the panel solely when
+    /// no Utterance is live, leaving the waveform and Draft to come back.
+    func announce(_ message: String, for duration: Duration = .seconds(3)) {
+        dismissal?.cancel()
+        state.message = message
+        presentPanel()
+
+        dismissal = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: duration)
+            guard !Task.isCancelled, let self else { return }
+            self.state.message = nil
+            guard !self.utteranceIsLive else { return }
+            self.hide()
+        }
+    }
+
+    private func presentPanel() {
         guard window == nil else { return }
 
         let hosting = NSHostingView(rootView: RecordingIndicatorView(state: state))
@@ -106,6 +150,7 @@ final class RecordingIndicator {
 
     /// Hide the indicator.
     func hide() {
+        utteranceIsLive = false
         window?.orderOut(nil)
         window = nil
     }

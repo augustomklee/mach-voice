@@ -1,0 +1,110 @@
+2026-09-02 19:00:29.824 [AppDelegate] Accessibility granted: true
+2026-09-02 19:00:29.824 [AppDelegate] Microphone granted: true
+2026-09-02 19:00:29.828 [EventTap] Event tap installed successfully
+2026-09-02 19:00:29.876 [SpeechModelInstaller] Reserved locale: en_US
+2026-09-02 19:00:29.882 [SpeechModelInstaller] Speech model already available
+2026-09-02 19:00:29.934 [SpeechEngine] Speech model warmed, format=<AVAudioFormat 0x7376d50e0:  1 ch,  16000 Hz, Int16>
+2026-09-02 19:01:03.985 [EventTap] Right Command pressed
+2026-09-02 19:01:04.004 [Target] capture: appError=AXError(rawValue: 0) elementError=AXError(rawValue: 0) bundleID=nil hasElement=true
+2026-09-02 19:01:04.004 [UtteranceController] Utterance started, target bundleID=nil
+2026-09-02 19:01:04.025 [SpeechEngine] Analysis started
+2026-09-02 19:01:04.096 [AudioCapture] Input format: <AVAudioFormat 0x7376d5db0:  1 ch,  48000 Hz, Float32>
+2026-09-02 19:01:04.096 [AudioCapture] Target format: <AVAudioFormat 0x7376d50e0:  1 ch,  16000 Hz, Int16>
+2026-09-02 19:01:04.144 [AudioCapture] Audio capture started
+2026-09-02 19:01:07.590 [EventTap] Right Command released
+2026-09-02 19:01:07.590 [UtteranceController] Utterance ended
+2026-09-02 19:01:07.600 [AudioCapture] Audio capture stopped after 31 buffers
+2026-09-02 19:01:07.647 [SpeechEngine] Analysis sequence ended
+2026-09-02 19:01:07.687 [SpeechEngine] Result isFinal=true text=The quick brown fox
+2026-09-02 19:01:07.687 [AppDelegate] Transcript: The quick brown fox
+2026-09-02 19:01:07.687 [InjectionService] inject: appID=nil preferred=nil hasFocusedElement=true
+2026-09-02 19:01:07.688 [Target] readValue: error=AXError(rawValue: 0)
+2026-09-02 19:01:07.688 [Target] readValue: error=AXError(rawValue: -25212)
+2026-09-02 19:01:07.688 [InjectionService] attemptAccessibility: read-back unreadable, unknowable outcome
+2026-09-02 19:01:07.688 [InjectionService] inject: accessibility outcome unknowable, stranding without retry
+2026-09-02 19:01:07.692 [InjectionService] keepOnClipboard: Stranded Transcript placed on the clipboard
+2026-09-02 19:01:07.707 [UtteranceController] Stranded Transcript: The quick brown fox
+2026-09-02 19:01:07.711 [SpeechEngine] Finalized utterance
+2026-09-02 19:01:07.711 [SpeechEngine] Results sequence ended
+2026-09-02 19:02:53.855 [EventTap] Right Command pressed
+2026-09-02 19:02:53.857 [Target] capture: appError=AXError(rawValue: 0) elementError=AXError(rawValue: 0) bundleID=nil hasElement=true
+2026-09-02 19:02:53.857 [UtteranceController] Utterance started, target bundleID=nil
+2026-09-02 19:02:53.866 [SpeechEngine] Analysis started
+2026-09-02 19:02:53.901 [AudioCapture] Input format: <AVAudioFormat 0x737c603c0:  1 ch,  48000 Hz, Float32>
+2026-09-02 19:02:53.901 [AudioCapture] Target format: <AVAudioFormat 0x7376d50e0:  1 ch,  16000 Hz, Int16>
+2026-09-02 19:02:53.957 [AudioCapture] Audio capture started
+2026-09-02 19:02:55.858 [EventTap] Right Command released
+2026-09-02 19:02:55.858 [UtteranceController] Utterance ended
+2026-09-02 19:02:55.865 [AudioCapture] Audio capture stopped after 16 buffers
+2026-09-02 19:02:55.915 [SpeechEngine] Analysis sequence ended
+2026-09-02 19:02:55.936 [SpeechEngine] Results sequence ended
+2026-09-02 19:02:55.936 [SpeechEngine] Finalized utterance
+2026-09-02 19:03:12.454 [EventTap] Right Command pressed
+2026-09-02 19:03:12.457 [Target] capture: appError=AXError(rawValue: 0) elementError=AXError(rawValue: 0) bundleID=nil hasElement=true
+2026-09-02 19:03:12.457 [UtteranceController] Utterance started, target bundleID=nil
+2026-09-02 19:03:12.464 [SpeechEngine] Analysis started
+2026-09-02 19:03:12.497 [AudioCapture] Input format: <AVAudioFormat 0x737c60690:  1 ch,  48000 Hz, Float32>
+2026-09-02 19:03:12.497 [AudioCapture] Target format: <AVAudioFormat 0x7376d50e0:  1 ch,  16000 Hz, Int16>
+2026-09-02 19:03:12.555 [AudioCapture] Audio capture started
+2026-09-02 19:03:16.056 [EventTap] Right Command released
+2026-09-02 19:03:16.056 [UtteranceController] Utterance ended
+2026-09-02 19:03:16.063 [AudioCapture] Audio capture stopped after 31 buffers
+2026-09-02 19:03:16.114 [SpeechEngine] Analysis sequence ended
+2026-09-02 19:03:16.174 [SpeechEngine] Result isFinal=true text=Jumped over the lazy dog
+2026-09-02 19:03:16.174 [AppDelegate] Transcript: Jumped over the lazy dog
+2026-09-02 19:03:16.174 [InjectionService] inject: appID=nil preferred=nil hasFocusedElement=true
+2026-09-02 19:03:16.174 [Target] readValue: error=AXError(rawValue: -25212)
+2026-09-02 19:03:16.174 [InjectionService] attemptAccessibility: original value unreadable, skipping AX write
+2026-09-02 19:03:16.174 [InjectionService] inject: probe failed for accessibility
+2026-09-02 19:03:16.178 [InjectionService] attemptPaste: posted Cmd+V
+2026-09-02 19:03:16.178 [InjectionService] inject: delivered with paste
+2026-09-02 19:03:16.178 [UtteranceController] Injected via paste
+2026-09-02 19:03:16.190 [SpeechEngine] Results sequence ended
+2026-09-02 19:03:16.190 [SpeechEngine] Finalized utterance
+2026-09-02 19:03:45.041 [AppDelegate] Accessibility granted: true
+2026-09-02 19:03:45.041 [AppDelegate] Microphone granted: true
+2026-09-02 19:03:45.044 [EventTap] Event tap installed successfully
+2026-09-02 19:03:45.087 [SpeechModelInstaller] Reserved locale: en_US
+2026-09-02 19:03:45.092 [SpeechModelInstaller] Speech model already available
+2026-09-02 19:03:45.142 [SpeechEngine] Speech model warmed, format=<AVAudioFormat 0xb036d28f0:  1 ch,  16000 Hz, Int16>
+2026-09-02 19:03:58.067 [EventTap] Right Command pressed
+2026-09-02 19:03:58.089 [Target] capture: appError=AXError(rawValue: 0) elementError=AXError(rawValue: 0) bundleID=com.augustomklee.UnverifiableTarget hasElement=true
+2026-09-02 19:03:58.089 [UtteranceController] Utterance started, target bundleID=com.augustomklee.UnverifiableTarget
+2026-09-02 19:03:58.108 [SpeechEngine] Analysis started
+2026-09-02 19:03:58.180 [AudioCapture] Input format: <AVAudioFormat 0xb036d1d60:  1 ch,  48000 Hz, Float32>
+2026-09-02 19:03:58.180 [AudioCapture] Target format: <AVAudioFormat 0xb036d28f0:  1 ch,  16000 Hz, Int16>
+2026-09-02 19:03:58.231 [AudioCapture] Audio capture started
+2026-09-02 19:04:01.673 [EventTap] Right Command released
+2026-09-02 19:04:01.673 [UtteranceController] Utterance ended
+2026-09-02 19:04:01.676 [AudioCapture] Audio capture stopped after 31 buffers
+2026-09-02 19:04:01.727 [SpeechEngine] Analysis sequence ended
+2026-09-02 19:04:01.765 [SpeechEngine] Result isFinal=true text=The quick brown fox
+2026-09-02 19:04:01.765 [AppDelegate] Transcript: The quick brown fox
+2026-09-02 19:04:01.765 [InjectionService] inject: appID=com.augustomklee.UnverifiableTarget preferred=nil hasFocusedElement=true
+2026-09-02 19:04:01.765 [Target] readValue: error=AXError(rawValue: 0)
+2026-09-02 19:04:01.766 [Target] readValue: error=AXError(rawValue: -25212)
+2026-09-02 19:04:01.766 [InjectionService] attemptAccessibility: read-back unreadable, unknowable outcome
+2026-09-02 19:04:01.766 [InjectionService] inject: accessibility outcome unknowable, stranding without retry
+2026-09-02 19:04:01.769 [InjectionService] keepOnClipboard: Stranded Transcript placed on the clipboard
+2026-09-02 19:04:01.781 [UtteranceController] Stranded Transcript: The quick brown fox
+2026-09-02 19:04:01.785 [SpeechEngine] Finalized utterance
+2026-09-02 19:04:01.785 [SpeechEngine] Results sequence ended
+2026-09-02 19:04:10.078 [EventTap] Right Command pressed
+2026-09-02 19:04:10.080 [Target] capture: appError=AXError(rawValue: 0) elementError=AXError(rawValue: 0) bundleID=com.augustomklee.UnverifiableTarget hasElement=true
+2026-09-02 19:04:10.080 [UtteranceController] Utterance started, target bundleID=com.augustomklee.UnverifiableTarget
+2026-09-02 19:04:10.087 [SpeechEngine] Analysis started
+2026-09-02 19:04:10.123 [AudioCapture] Input format: <AVAudioFormat 0xb036cc1e0:  1 ch,  48000 Hz, Float32>
+2026-09-02 19:04:10.123 [AudioCapture] Target format: <AVAudioFormat 0xb036d28f0:  1 ch,  16000 Hz, Int16>
+2026-09-02 19:04:10.178 [AudioCapture] Audio capture started
+2026-09-02 19:04:13.680 [EventTap] Right Command released
+2026-09-02 19:04:13.680 [UtteranceController] Utterance ended
+2026-09-02 19:04:13.687 [AudioCapture] Audio capture stopped after 31 buffers
+2026-09-02 19:04:13.739 [SpeechEngine] Analysis sequence ended
+2026-09-02 19:04:13.778 [SpeechEngine] Result isFinal=true text=Jumped over the lazy dog
+2026-09-02 19:04:13.778 [AppDelegate] Transcript: Jumped over the lazy dog
+2026-09-02 19:04:13.778 [InjectionService] inject: appID=com.augustomklee.UnverifiableTarget preferred=Optional(MachVoiceKit.InjectionMechanism.paste) hasFocusedElement=true
+2026-09-02 19:04:13.784 [InjectionService] attemptPaste: posted Cmd+V
+2026-09-02 19:04:13.784 [InjectionService] inject: delivered with paste
+2026-09-02 19:04:13.785 [UtteranceController] Injected via paste
+2026-09-02 19:04:13.788 [SpeechEngine] Results sequence ended
+2026-09-02 19:04:13.788 [SpeechEngine] Finalized utterance

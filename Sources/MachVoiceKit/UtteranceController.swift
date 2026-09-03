@@ -96,19 +96,32 @@ final class UtteranceController: ObservableObject {
             return
         }
 
-        guard let target = currentTarget else {
-            logger.log("No target captured, transcript is stranded: \(text, privacy: .public)")
+        // Abandoned Utterance: no words
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            logger.log("Abandoned utterance, no words")
             return
         }
 
-        let result = injectionService.inject(text, target: target)
-        switch result {
+        guard let target = currentTarget else {
+            logger.log("No Target captured")
+            strand(text)
+            return
+        }
+
+        switch injectionService.inject(text, target: target) {
         case .success(let mechanism):
             history.add(text: text, success: true)
             logger.log("Injected via \(String(describing: mechanism), privacy: .public)")
         case .stranded:
-            history.add(text: text, success: false)
-            logger.log("Stranded transcript: \(text, privacy: .public)")
+            strand(text)
         }
+    }
+
+    /// A Stranded Transcript loses nothing: clipboard, History, and the speaker is told.
+    private func strand(_ text: String) {
+        history.add(text: text, success: false)
+        injectionService.keepOnClipboard(text)
+        indicator.announce("Could not deliver the words. They are on the clipboard.")
+        logger.log("Stranded Transcript: \(text, privacy: .public)")
     }
 }

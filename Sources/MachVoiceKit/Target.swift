@@ -5,11 +5,59 @@ import os.log
 
 private let targetLogger = Logger(subsystem: "com.augustomklee.MachVoice", category: "Target")
 
+/// The Target's text field as an Injection reads and writes it.
+///
+/// `read` reports whether the value could be read at all, separately from
+/// what it was, because the read-back after a write is what decides an
+/// Injection (docs/adr/0002) and an unreadable read-back is not an empty one.
+struct AccessibilityField {
+    var read: () -> (value: String?, readable: Bool)
+    var write: (String) -> AXError
+
+    /// The field behind a live AXUIElement.
+    init(element: AXUIElement) {
+        read = {
+            var value: AnyObject?
+            let error = AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value)
+            targetLogger.log("readValue: error=\(String(describing: error), privacy: .public)")
+            return (value as? String, error == .success)
+        }
+        write = { value in
+            AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, value as CFTypeRef)
+        }
+    }
+
+    /// A scripted field, so a test can drive a read-back that fails only after a write.
+    init(read: @escaping () -> (value: String?, readable: Bool), write: @escaping (String) -> AXError) {
+        self.read = read
+        self.write = write
+    }
+}
+
 /// The application and text field that receives an Utterance.
 struct Target {
     let application: AXUIElement?
     let focusedElement: AXUIElement?
     let bundleIdentifier: String?
+    /// The focused text field, or nil when the Target exposes none.
+    let field: AccessibilityField?
+
+    init(application: AXUIElement?, focusedElement: AXUIElement?, bundleIdentifier: String?) {
+        self.init(
+            application: application,
+            focusedElement: focusedElement,
+            bundleIdentifier: bundleIdentifier,
+            field: focusedElement.map(AccessibilityField.init(element:))
+        )
+    }
+
+    /// A Target with an explicit field, so a test can supply a scripted one.
+    init(application: AXUIElement?, focusedElement: AXUIElement?, bundleIdentifier: String?, field: AccessibilityField?) {
+        self.application = application
+        self.focusedElement = focusedElement
+        self.bundleIdentifier = bundleIdentifier
+        self.field = field
+    }
 
     /// Capture the Target at key-down.
     ///
@@ -57,19 +105,5 @@ struct Target {
             focusedElement: focusedElementRef as! AXUIElement?,
             bundleIdentifier: bundleID
         )
-    }
-
-    /// Get the current text value of the focused element, and whether it was readable at all.
-    func readValue() -> (value: String?, readable: Bool) {
-        guard let focusedElement else { return (nil, false) }
-        var value: AnyObject?
-        let error = AXUIElementCopyAttributeValue(focusedElement, kAXValueAttribute as CFString, &value)
-        targetLogger.log("readValue: error=\(String(describing: error), privacy: .public)")
-        return (value as? String, error == .success)
-    }
-
-    /// Get the current text value of the focused element.
-    func currentValue() -> String? {
-        readValue().value
     }
 }

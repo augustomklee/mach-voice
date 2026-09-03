@@ -35,7 +35,7 @@ An Utterance the speaker cancelled before releasing the Dictation Key, or one to
 _Avoid_: cancelled recording, empty utterance, discard
 
 **Stranded Transcript**:
-A Transcript that no Injection mechanism could deliver, which is placed on the clipboard and kept in History so the speaker never loses words.
+A Transcript that Injection did not deliver, either because no mechanism worked or because one could not be verified, which is placed on the clipboard and kept in History so the speaker never loses words.
 _Avoid_: failed transcript, dropped text, lost dictation
 
 **Injection Profile**:
