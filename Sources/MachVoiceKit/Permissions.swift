@@ -28,18 +28,50 @@ final class Permissions {
 
     /// Notified after every refresh, whatever triggered it (launch, the manual
     /// "Re-check permissions" button, or `AppDelegate`'s background poll). Lets
-    /// `AppDelegate` retry installing the event tap without a separate
-    /// first-grant edge-detection path (issue #8).
+    /// `AppDelegate` install the event tap when the grant arrives (issue #8) and
+    /// tear it down when the grant is taken away (issue #14) from one place.
     var onRefresh: (() -> Void)?
 
+    private let isAccessibilityTrusted: () -> Bool
+    private let microphoneStatus: () -> AVAuthorizationStatus
+
+    /// The two sources are injectable so a test can take a grant away.
+    init(
+        isAccessibilityTrusted: @escaping () -> Bool = { Permissions.accessibilityIsTrustedNow() },
+        microphoneStatus: @escaping () -> AVAuthorizationStatus = { AVCaptureDevice.authorizationStatus(for: .audio) }
+    ) {
+        self.isAccessibilityTrusted = isAccessibilityTrusted
+        self.microphoneStatus = microphoneStatus
+    }
+
     func refresh() {
-        accessibility = AXIsProcessTrusted() ? .granted : .denied
-        microphone = switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        accessibility = isAccessibilityTrusted() ? .granted : .denied
+        microphone = switch microphoneStatus() {
         case .authorized: .granted
         case .notDetermined: .undetermined
         default: .denied
         }
         onRefresh?()
+    }
+
+    /// Whether the Accessibility grant holds at this moment.
+    ///
+    /// `AXIsProcessTrusted()` caches a positive answer for the life of the process:
+    /// after the grant is taken away it keeps returning true, and so do
+    /// `CGPreflightPostEventAccess()` and `CGPreflightListenEventAccess()` (issue #14).
+    /// A request answered by another application is checked against the grant
+    /// live and fails with `apiDisabled` once it is gone, so a positive answer is
+    /// confirmed by asking the Dock, which is always running, for its role.
+    /// A missing grant is not cached, so a negative answer needs no confirmation.
+    nonisolated static func accessibilityIsTrustedNow() -> Bool {
+        guard AXIsProcessTrusted() else { return false }
+        guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else {
+            return true
+        }
+        let element = AXUIElementCreateApplication(dock.processIdentifier)
+        AXUIElementSetMessagingTimeout(element, 0.5)
+        var role: AnyObject?
+        return AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role) != .apiDisabled
     }
 
     /// The microphone is the only one of the two that has a usable system prompt.

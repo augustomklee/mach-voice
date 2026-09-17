@@ -141,17 +141,50 @@ final class EventTap: @unchecked Sendable {
     }
 
     /// Handle the tap being disabled and re-arm it.
+    ///
+    /// `onDisabled` runs first and may tear the tap down, when the reason it was
+    /// disabled is a lost Accessibility grant, so the re-arm reads the tap again
+    /// rather than reviving one that has been uninstalled.
     private func handleDisabled() {
         let callback = onDisabled
-        nonisolated(unsafe) let tap = eventTap
         DispatchQueue.main.async {
             callback?()
 
-            // Simple re-arm logic
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                if let tap {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                if let tap = self?.eventTap {
                     CGEvent.tapEnable(tap: tap, enable: true)
                 }
+            }
+        }
+    }
+
+    /// Remove the tap, so Right Command reaches other applications again.
+    ///
+    /// Called when the Accessibility grant is taken away (issue #14). The key-up
+    /// of a Dictation Key held at this moment will never reach a removed tap, so
+    /// the Utterance it opened is closed here instead of being left live forever.
+    /// Must run on the main thread, where `install` added the run loop source.
+    func uninstall() {
+        if let eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: false)
+            CFMachPortInvalidate(eventTap)
+        }
+        if let runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        }
+        let wasInstalled = eventTap != nil
+        eventTap = nil
+        runLoopSource = nil
+        if wasInstalled {
+            logger.log("Event tap uninstalled")
+        }
+
+        if rightCommandWasDown {
+            rightCommandWasDown = false
+            logger.log("Dictation Key closed by uninstall")
+            let callback = onKeyUp
+            DispatchQueue.main.async {
+                callback?()
             }
         }
     }
