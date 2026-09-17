@@ -32,6 +32,8 @@ _Avoid_: insertion, paste, typing, sending
 
 **Abandoned Utterance**:
 An Utterance the speaker cancelled before releasing the Dictation Key, or one too brief to have contained speech, which produces no Transcript and leaves no trace anywhere.
+Escape while the Dictation Key is held abandons the Utterance and is consumed so the Target never sees it.
+Escape with no Utterance live is an ordinary key press that mach-voice does not touch.
 _Avoid_: cancelled recording, empty utterance, discard
 
 **Stranded Transcript**:

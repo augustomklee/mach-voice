@@ -2,44 +2,93 @@ import CoreGraphics
 import Testing
 @testable import MachVoiceKit
 
-/// `EventTap.decide` is the pure decision behind the global CGEventTap.
-/// These tests lock in the invariant that let Escape regress silently: Escape
-/// has no role in this app unless the Dictation Key is held, so it must pass
-/// through untouched the rest of the time.
+/// `EventTap.handleKeyDown` is what let Escape regress silently: Escape has no role
+/// in this app unless the Dictation Key is held, so it must pass through untouched
+/// the rest of the time. These tests drive the tap's own handlers with real `CGEvent`
+/// values and assert two observable outcomes: the consume return and whether `onEscape`
+/// fired, per issue #10's testing decisions.
+@MainActor
 struct EventTapDecisionTests {
-    static let rightCommandFlag: UInt64 = 0x10
-    static let leftCommandFlag: UInt64 = 0x20
+    static let rightCommandFlags = CGEventFlags(rawValue: 0x10)
+    static let noFlags = CGEventFlags(rawValue: 0)
     static let escapeKeyCode: Int64 = 53
     static let otherKeyCode: Int64 = 0 // 'a'
 
-    @Test func escapeIsIgnoredWhileTheDictationKeyIsNotHeld() {
-        let decision = EventTap.decide(type: .keyDown, flags: 0, keyCode: Self.escapeKeyCode, rightCommandWasDown: false)
-        #expect(decision == .ignore, "Escape must reach the frontmost application when no Utterance is in progress")
+    static func keyDownEvent(keyCode: Int64) -> CGEvent {
+        let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(keyCode), keyDown: true)!
+        event.flags = noFlags
+        return event
     }
 
-    @Test func escapeCancelsWhileTheDictationKeyIsHeld() {
-        let decision = EventTap.decide(type: .keyDown, flags: 0, keyCode: Self.escapeKeyCode, rightCommandWasDown: true)
-        #expect(decision == .escapeDown)
+    static func flagsChangedEvent(flags: CGEventFlags) -> CGEvent {
+        let event = CGEvent(keyboardEventSource: nil, virtualKey: 0x36, keyDown: true)!
+        event.flags = flags
+        return event
     }
 
-    @Test func nonEscapeKeysAreAlwaysIgnored() {
-        #expect(EventTap.decide(type: .keyDown, flags: 0, keyCode: Self.otherKeyCode, rightCommandWasDown: true) == .ignore)
-        #expect(EventTap.decide(type: .keyDown, flags: 0, keyCode: Self.otherKeyCode, rightCommandWasDown: false) == .ignore)
+    @Test func escapeWithRightCommandNeverPressedPassesThrough() async throws {
+        let tap = EventTap()
+        var escapeFired = false
+        tap.onEscape = { escapeFired = true }
+
+        let consumed = tap.handleKeyDown(Self.keyDownEvent(keyCode: Self.escapeKeyCode))
+
+        #expect(!consumed, "Escape must reach the frontmost application when no Utterance is in progress")
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(!escapeFired)
     }
 
-    @Test func rightCommandAloneStartsAndHoldsTheDictationKey() {
-        #expect(EventTap.decide(type: .flagsChanged, flags: Self.rightCommandFlag, keyCode: 0, rightCommandWasDown: false) == .rightCommandDown)
-        #expect(EventTap.decide(type: .flagsChanged, flags: Self.rightCommandFlag, keyCode: 0, rightCommandWasDown: true) == .rightCommandHeld)
+    @Test func rightCommandDownThenEscapeConsumesAndFires() async throws {
+        let tap = EventTap()
+        var escapeFired = false
+        tap.onEscape = { escapeFired = true }
+        tap.onKeyDown = {}
+
+        _ = tap.handleFlagsChanged(Self.flagsChangedEvent(flags: Self.rightCommandFlags))
+        let consumed = tap.handleKeyDown(Self.keyDownEvent(keyCode: Self.escapeKeyCode))
+
+        #expect(consumed)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(escapeFired)
     }
 
-    @Test func releasingRightCommandEndsTheDictationKey() {
-        #expect(EventTap.decide(type: .flagsChanged, flags: 0, keyCode: 0, rightCommandWasDown: true) == .rightCommandUp)
+    @Test func rightCommandDownThenUpThenEscapePassesThrough() async throws {
+        let tap = EventTap()
+        var escapeFired = false
+        tap.onEscape = { escapeFired = true }
+        tap.onKeyDown = {}
+        tap.onKeyUp = {}
+
+        _ = tap.handleFlagsChanged(Self.flagsChangedEvent(flags: Self.rightCommandFlags))
+        _ = tap.handleFlagsChanged(Self.flagsChangedEvent(flags: Self.noFlags))
+        let consumed = tap.handleKeyDown(Self.keyDownEvent(keyCode: Self.escapeKeyCode))
+
+        #expect(!consumed, "Escape must reach the frontmost application once the Dictation Key is released")
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(!escapeFired)
+    }
+
+    @Test func nonEscapeKeyWithRightCommandDownPassesThrough() async throws {
+        let tap = EventTap()
+        var escapeFired = false
+        tap.onEscape = { escapeFired = true }
+        tap.onKeyDown = {}
+
+        _ = tap.handleFlagsChanged(Self.flagsChangedEvent(flags: Self.rightCommandFlags))
+        let consumed = tap.handleKeyDown(Self.keyDownEvent(keyCode: Self.otherKeyCode))
+
+        #expect(!consumed)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(!escapeFired)
     }
 
     /// docs/adr/0003: the generic Command flag must never substitute for Right Command.
     @Test func leftCommandNeverActsAsTheDictationKey() {
-        let bothCommands = Self.rightCommandFlag | Self.leftCommandFlag
-        #expect(EventTap.decide(type: .flagsChanged, flags: Self.leftCommandFlag, keyCode: 0, rightCommandWasDown: false) == .ignore)
-        #expect(EventTap.decide(type: .flagsChanged, flags: bothCommands, keyCode: 0, rightCommandWasDown: false) == .ignore)
+        let tap = EventTap()
+        let bothCommands = CGEventFlags(rawValue: 0x10 | 0x20)
+        let leftOnly = CGEventFlags(rawValue: 0x20)
+
+        #expect(!tap.handleFlagsChanged(Self.flagsChangedEvent(flags: leftOnly)))
+        #expect(!tap.handleFlagsChanged(Self.flagsChangedEvent(flags: bothCommands)))
     }
 }

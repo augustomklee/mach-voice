@@ -58,7 +58,7 @@ of `rightCommandWasDown` or any other state.
 
 ## 2. After the fix: Escape passes through when idle
 
-Same build with the fix applied (`EventTap.decide` gates `.escapeDown` on
+Same build with the fix applied (`handleKeyDown` gates the Escape branch on
 `rightCommandWasDown`), MachVoice running and idle.
 
 ```
@@ -118,26 +118,40 @@ $ swift build -c release
 Build complete!
 
 $ swift test --filter EventTapDecisionTests
-✔ Test escapeIsIgnoredWhileTheDictationKeyIsNotHeld() passed
-✔ Test escapeCancelsWhileTheDictationKeyIsHeld() passed
-✔ Test nonEscapeKeysAreAlwaysIgnored() passed
-✔ Test rightCommandAloneStartsAndHoldsTheDictationKey() passed
-✔ Test releasingRightCommandEndsTheDictationKey() passed
+✔ Test escapeWithRightCommandNeverPressedPassesThrough() passed
+✔ Test rightCommandDownThenEscapeConsumesAndFires() passed
+✔ Test rightCommandDownThenUpThenEscapePassesThrough() passed
+✔ Test nonEscapeKeyWithRightCommandDownPassesThrough() passed
 ✔ Test leftCommandNeverActsAsTheDictationKey() passed
-✔ Test run with 6 tests in 1 suite passed
+✔ Test run with 5 tests in 1 suite passed
 
 $ swift test
-✔ Test run with 17 tests in 4 suites passed
+✔ Test run with 16 tests in 4 suites passed
 ```
 
-Red check: with the `keyCode == escapeKeyCode` branch reverted to drop the
-`&& rightCommandWasDown` guard (the pre-fix behavior),
-`escapeIsIgnoredWhileTheDictationKeyIsNotHeld` fails:
+Red check: with `handleKeyDown`'s `keyCode == 53` branch reverted to drop the
+`&& rightCommandWasDown` guard (the pre-fix behavior), both tests that require
+Escape to pass through fail:
 
 ```
-✘ Test escapeIsIgnoredWhileTheDictationKeyIsNotHeld() recorded an issue:
-  Expectation failed: (decision → .escapeDown) == .ignore
+✘ Test escapeWithRightCommandNeverPressedPassesThrough() recorded an issue:
+  Expectation failed: !(consumed → <not evaluated>)
   Escape must reach the frontmost application when no Utterance is in progress
+✘ Test rightCommandDownThenUpThenEscapePassesThrough() recorded an issue:
+  Expectation failed: !(consumed → <not evaluated>)
+  Escape must reach the frontmost application once the Dictation Key is released
 ```
 
-So the test is what holds the gate in place.
+So the tests are what hold the gate in place.
+
+## Spec
+
+This closes [#10](https://github.com/augustomklee/mach-voice/issues/10), whose
+Implementation Decisions this change follows: `handleFlagsChanged`,
+`handleKeyDown` and the four closure properties widen from `private` to
+`internal` rather than a new pure decision type, and the dormant `KeyEvent`
+enum is left untouched. `CONTEXT.md`'s Abandoned Utterance entry gained the
+two sentences the issue asked for, describing Escape's behavior in both
+states. The follow-up in [#11](https://github.com/augustomklee/mach-voice/issues/11)
+(release-after-Escape calling `endUtterance` on an already-abandoned
+Utterance) is out of scope here, per the issue's own Out of Scope section.

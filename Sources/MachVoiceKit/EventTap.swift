@@ -16,11 +16,16 @@ final class EventTap: @unchecked Sendable {
     private var runLoopSource: CFRunLoopSource?
     private var rightCommandWasDown = false
 
+    // CGEventFlag constants for left/right command.
+    // Verified: 0x10 is Right Command, 0x20 is Left Command.
+    private let rightCommandFlag: UInt64 = 0x10
+    private let leftCommandFlag: UInt64 = 0x20
+
     // Callback closures
-    private var onKeyDown: (() -> Void)?
-    private var onKeyUp: (() -> Void)?
-    private var onEscape: (() -> Void)?
-    private var onDisabled: (() -> Void)?
+    var onKeyDown: (() -> Void)?
+    var onKeyUp: (() -> Void)?
+    var onEscape: (() -> Void)?
+    var onDisabled: (() -> Void)?
 
     /// Install the event tap and register callbacks.
     func install(
@@ -85,55 +90,25 @@ final class EventTap: @unchecked Sendable {
         return shouldConsume ? nil : Unmanaged.passRetained(event)
     }
 
-    /// Escape key code, per the Carbon HIToolbox virtual keycode table (kVK_Escape).
-    private static let escapeKeyCode: Int64 = 53
+    /// Handle modifier flag changes to detect Right Command. Returns true when the event must be consumed.
+    func handleFlagsChanged(_ event: CGEvent) -> Bool {
+        let flags = event.flags.rawValue
 
-    // CGEventFlag constants for left/right command.
-    // Verified: 0x10 is Right Command, 0x20 is Left Command.
-    private static let rightCommandFlagMask: UInt64 = 0x10
-    private static let leftCommandFlagMask: UInt64 = 0x20
+        let rightCommand = (flags & rightCommandFlag) != 0
+        let leftCommand = (flags & leftCommandFlag) != 0
 
-    /// The pure decision behind both handlers below: given the event and whether the
-    /// Dictation Key is currently held, what should happen. Kept free of side effects
-    /// so it can be tested without a real CGEventTap.
-    static func decide(type: CGEventType, flags: UInt64, keyCode: Int64, rightCommandWasDown: Bool) -> KeyEvent {
-        switch type {
-        case .flagsChanged:
-            let rightCommand = (flags & rightCommandFlagMask) != 0
-            let leftCommand = (flags & leftCommandFlagMask) != 0
-
-            // Only care about Right Command, not Left Command
-            if rightCommand && !leftCommand {
-                return rightCommandWasDown ? .rightCommandHeld : .rightCommandDown
-            } else if !rightCommand && rightCommandWasDown {
-                return .rightCommandUp
-            }
-            return .ignore // Let other modifier events pass
-        case .keyDown:
-            // Escape has no role in this app unless the Dictation Key is held.
-            if keyCode == escapeKeyCode && rightCommandWasDown {
-                return .escapeDown
-            }
-            return .ignore
-        default:
-            return .ignore
-        }
-    }
-
-    /// Handle modifier flag changes to detect Right Command.
-    private func handleFlagsChanged(_ event: CGEvent) -> Bool {
-        switch EventTap.decide(type: .flagsChanged, flags: event.flags.rawValue, keyCode: 0, rightCommandWasDown: rightCommandWasDown) {
-        case .rightCommandDown:
-            rightCommandWasDown = true
-            logger.log("Right Command pressed")
-            let callback = onKeyDown
-            DispatchQueue.main.async {
-                callback?()
+        // Only care about Right Command, not Left Command
+        if rightCommand && !leftCommand {
+            if !rightCommandWasDown {
+                rightCommandWasDown = true
+                logger.log("Right Command pressed")
+                let callback = onKeyDown
+                DispatchQueue.main.async {
+                    callback?()
+                }
             }
             return true // Consume Right Command events
-        case .rightCommandHeld:
-            return true // Consume Right Command events
-        case .rightCommandUp:
+        } else if !rightCommand && rightCommandWasDown {
             rightCommandWasDown = false
             logger.log("Right Command released")
             let callback = onKeyUp
@@ -141,24 +116,24 @@ final class EventTap: @unchecked Sendable {
                 callback?()
             }
             return true // Consume Right Command release
-        case .escapeDown, .ignore:
-            return false
         }
+
+        return false // Let other modifier events pass
     }
 
-    /// Handle key down events to detect Escape.
-    private func handleKeyDown(_ event: CGEvent) -> Bool {
+    /// Handle key down events to detect Escape. Returns true when the event must be consumed.
+    /// Escape is consumed only while Right Command is held, so it reaches the frontmost
+    /// application untouched the rest of the time.
+    func handleKeyDown(_ event: CGEvent) -> Bool {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        switch EventTap.decide(type: .keyDown, flags: 0, keyCode: keyCode, rightCommandWasDown: rightCommandWasDown) {
-        case .escapeDown:
+        if keyCode == 53 && rightCommandWasDown { // Escape key code
             let callback = onEscape
             DispatchQueue.main.async {
                 callback?()
             }
             return true // Consume Escape only while the Dictation Key is held
-        default:
-            return false
         }
+        return false
     }
 
     /// Handle the tap being disabled and re-arm it.
