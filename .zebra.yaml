@@ -1,0 +1,10 @@
+# mach-voice's zebra config. Layered over ~/.zebra/config.yaml and the runner defaults.
+
+# Package.swift declares no external dependencies, so a leased worktree is
+# runnable as soon as it's checked out; no prepare stage is needed.
+commands:
+  test: ["swift", "test"]
+  # Type-checking is inherent to compilation; there is no separate step.
+  typecheck: ["swift", "build"]
+  # No linter is configured in this repo yet.
+  lint: ["true"]

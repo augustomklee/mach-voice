@@ -22,10 +22,10 @@ final class EventTap: @unchecked Sendable {
     private let leftCommandFlag: UInt64 = 0x20
 
     // Callback closures
-    private var onKeyDown: (() -> Void)?
-    private var onKeyUp: (() -> Void)?
-    private var onEscape: (() -> Void)?
-    private var onDisabled: (() -> Void)?
+    var onKeyDown: (() -> Void)?
+    var onKeyUp: (() -> Void)?
+    var onEscape: (() -> Void)?
+    var onDisabled: (() -> Void)?
 
     /// Install the event tap and register callbacks.
     func install(
@@ -90,8 +90,8 @@ final class EventTap: @unchecked Sendable {
         return shouldConsume ? nil : Unmanaged.passRetained(event)
     }
 
-    /// Handle modifier flag changes to detect Right Command.
-    private func handleFlagsChanged(_ event: CGEvent) -> Bool {
+    /// Handle modifier flag changes to detect Right Command. Returns true when the event must be consumed.
+    func handleFlagsChanged(_ event: CGEvent) -> Bool {
         let flags = event.flags.rawValue
 
         let rightCommand = (flags & rightCommandFlag) != 0
@@ -121,15 +121,17 @@ final class EventTap: @unchecked Sendable {
         return false // Let other modifier events pass
     }
 
-    /// Handle key down events to detect Escape.
-    private func handleKeyDown(_ event: CGEvent) -> Bool {
+    /// Handle key down events to detect Escape. Returns true when the event must be consumed.
+    /// Escape is consumed only while Right Command is held, so it reaches the frontmost
+    /// application untouched the rest of the time.
+    func handleKeyDown(_ event: CGEvent) -> Bool {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        if keyCode == 53 { // Escape key code
+        if keyCode == 53 && rightCommandWasDown { // Escape key code
             let callback = onEscape
             DispatchQueue.main.async {
                 callback?()
             }
-            return true // Consume Escape when it's pressed during an utterance
+            return true // Consume Escape only while the Dictation Key is held
         }
         return false
     }
