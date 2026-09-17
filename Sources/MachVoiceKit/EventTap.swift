@@ -27,6 +27,10 @@ final class EventTap: @unchecked Sendable {
     var onEscape: (() -> Void)?
     var onDisabled: (() -> Void)?
 
+    /// Whether `install` actually created a live tap. False when `CGEvent.tapCreate`
+    /// failed, most commonly because the Accessibility grant is missing.
+    var isInstalled: Bool { eventTap != nil }
+
     /// Install the event tap and register callbacks.
     func install(
         onKeyDown: @escaping () -> Void,

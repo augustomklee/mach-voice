@@ -26,6 +26,12 @@ final class Permissions {
 
     var allGranted: Bool { accessibility.isGranted && microphone.isGranted }
 
+    /// Notified after every refresh, whatever triggered it (launch, the manual
+    /// "Re-check permissions" button, or `AppDelegate`'s background poll). Lets
+    /// `AppDelegate` retry installing the event tap without a separate
+    /// first-grant edge-detection path (issue #8).
+    var onRefresh: (() -> Void)?
+
     func refresh() {
         accessibility = AXIsProcessTrusted() ? .granted : .denied
         microphone = switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -33,6 +39,7 @@ final class Permissions {
         case .notDetermined: .undetermined
         default: .denied
         }
+        onRefresh?()
     }
 
     /// The microphone is the only one of the two that has a usable system prompt.

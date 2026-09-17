@@ -8,8 +8,10 @@ public struct MachVoiceApp: App {
     @State private var modelInstaller = SpeechModelInstaller()
 
     public init() {
-        // Share the model installer with the app delegate
+        // Share the model installer and the permissions state with the app delegate,
+        // so there is exactly one Permissions instance for the whole app (issue #8).
         _delegate.wrappedValue.modelInstaller = modelInstaller
+        _delegate.wrappedValue.permissions = permissions
     }
 
     public var body: some Scene {
@@ -40,12 +42,19 @@ public struct MachVoiceApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let logger = Logger(subsystem: "com.augustomklee.MachVoice", category: "AppDelegate")
     private var eventTap: EventTap?
-    private var permissions = Permissions()
+    private var permissionsPollTimer: Timer?
+    var permissions = Permissions()
     private var utteranceController = UtteranceController()
     var modelInstaller: SpeechModelInstaller?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+
+        // Every refresh, however it was triggered, gets a chance to bring the event
+        // tap up - the missing half of issue #8.
+        permissions.onRefresh = { [weak self] in
+            self?.installEventTap()
+        }
         permissions.refresh()
 
         logger.log("Accessibility granted: \(self.permissions.accessibility.isGranted)")
@@ -69,16 +78,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.logger.log("Transcript: \(transcript, privacy: .public)")
         }
 
-        // Install event tap immediately - will fail gracefully if permissions not granted
+        // permissions.refresh() above already attempted this via onRefresh; this
+        // covers the case where onRefresh was set after an already-granted state
+        // was read some other way.
         installEventTap()
+
+        // Notice a grant that arrives after launch with zero interaction (issue #8).
+        // mach-voice is an accessory app with no window, so there is no activation
+        // or menu-open moment to piggyback on instead.
+        startPermissionsPollingIfNeeded()
     }
 
     func installEventTap() {
-        guard eventTap == nil else { return }
+        guard eventTap == nil, permissions.accessibility.isGranted else { return }
 
         // Install the event tap to monitor Right Command
         let tap = EventTap()
-        eventTap = tap
         tap.install(
             onKeyDown: { [weak self] in
                 self?.utteranceController.startUtterance()
@@ -93,6 +108,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.logger.log("Event tap was disabled, re-arming...")
             }
         )
+        // Only keep the tap once it is confirmed live: assigning it beforehand left
+        // every later attempt no-op forever once CGEvent.tapCreate had failed once.
+        if tap.isInstalled {
+            eventTap = tap
+        }
+    }
+
+    private func startPermissionsPollingIfNeeded() {
+        guard !permissions.allGranted, permissionsPollTimer == nil else { return }
+        let timer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.pollPermissions()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        permissionsPollTimer = timer
+    }
+
+    private func pollPermissions() {
+        permissions.refresh()
+        if permissions.allGranted {
+            permissionsPollTimer?.invalidate()
+            permissionsPollTimer = nil
+        }
     }
 }
 
