@@ -16,6 +16,9 @@ final class UtteranceController: ObservableObject {
     let vocabulary = VocabularyManager()
     private var currentTarget: Target?
     private var utteranceStart: Date?
+    /// Read live when a Transcript arrives rather than from the last poll, which
+    /// can be up to one tick stale.
+    var accessibilityGranted: () -> Bool = { Permissions.accessibilityIsTrustedNow() }
 
     /// Called when a partial Draft is produced.
     var onDraft: ((String) -> Void)?
@@ -89,31 +92,53 @@ final class UtteranceController: ObservableObject {
         utteranceStart = nil
     }
 
-    private func handleTranscript(_ text: String) {
-        // Abandoned Utterance: too short
-        if let start = utteranceStart, Date().timeIntervalSince(start) < 0.25 {
-            logger.log("Abandoned utterance, too short")
-            return
-        }
+    /// What happens to a Transcript once it arrives.
+    enum TranscriptDisposition {
+        case abandon(reason: String)
+        case strand(reason: String)
+        case inject(Target)
+    }
 
-        // Abandoned Utterance: no words
+    /// Decide a Transcript's fate from the facts at the moment it arrives.
+    ///
+    /// Without the Accessibility grant no Injection mechanism can work: the AX
+    /// write is refused and posted Cmd+V or keystrokes are dropped, while
+    /// `attemptPaste` would still report success. So a Transcript that arrives
+    /// after the grant was taken away, including the one from an Utterance the
+    /// teardown closed mid-speech (issue #14), strands before any Injection is
+    /// attempted and teaches the Injection Profile nothing.
+    static func disposition(of text: String, elapsed: TimeInterval?, target: Target?, accessibilityGranted: Bool) -> TranscriptDisposition {
+        if let elapsed, elapsed < 0.25 {
+            return .abandon(reason: "too short")
+        }
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            logger.log("Abandoned utterance, no words")
-            return
+            return .abandon(reason: "no words")
         }
-
-        guard let target = currentTarget else {
-            logger.log("No Target captured")
-            strand(text)
-            return
+        guard accessibilityGranted else {
+            return .strand(reason: "Accessibility grant missing")
         }
+        guard let target else {
+            return .strand(reason: "No Target captured")
+        }
+        return .inject(target)
+    }
 
-        switch injectionService.inject(text, target: target) {
-        case .success(let mechanism):
-            history.add(text: text, success: true)
-            logger.log("Injected via \(String(describing: mechanism), privacy: .public)")
-        case .stranded:
+    private func handleTranscript(_ text: String) {
+        let elapsed = utteranceStart.map { Date().timeIntervalSince($0) }
+        switch Self.disposition(of: text, elapsed: elapsed, target: currentTarget, accessibilityGranted: accessibilityGranted()) {
+        case .abandon(let reason):
+            logger.log("Abandoned utterance, \(reason, privacy: .public)")
+        case .strand(let reason):
+            logger.log("\(reason, privacy: .public)")
             strand(text)
+        case .inject(let target):
+            switch injectionService.inject(text, target: target) {
+            case .success(let mechanism):
+                history.add(text: text, success: true)
+                logger.log("Injected via \(String(describing: mechanism), privacy: .public)")
+            case .stranded:
+                strand(text)
+            }
         }
     }
 

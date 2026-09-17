@@ -19,3 +19,16 @@ This was chosen knowing the right-hand modifier is not used for shortcuts here, 
 The tap must compare left and right modifier flags rather than the generic Command flag, or left Command would trigger dictation inside every Command-S.
 If mach-voice crashes the tap dies with it and the key returns to normal behaviour, which is the correct failure direction.
 If it merely hangs, macOS disables the slow tap and the key silently becomes an ordinary Command again mid-**Utterance**, so the tap-disabled event must be handled and the tap re-armed.
+
+## Update: the grant taken away mid-run
+
+The tap exists only while the Accessibility grant holds, and the grant can be taken away while mach-voice keeps running (issue #14).
+Observed on macOS 26.5: after the grant is removed, the live tap still delivers the next event, then macOS disables it, so the key-up of a held **Dictation Key** is lost.
+`AXIsProcessTrusted()`, `CGPreflightPostEventAccess()` and `CGPreflightListenEventAccess()` all keep returning true in the running process, so none of them can notice the loss.
+An Accessibility request answered by another application fails with `apiDisabled` as soon as the grant is gone, and that is the check mach-voice polls for the whole run.
+
+On loss the tap is removed rather than re-armed, which returns Right Command to ordinary Command, the same failure direction as a crash.
+An **Utterance** whose **Dictation Key** is held at that moment is closed by the teardown instead of being left live.
+Its **Transcript** becomes a **Stranded Transcript** without any **Injection** attempt, because no mechanism works without the grant and paste would still report success.
+It is not abandoned: the speaker did not cancel it, and a strand keeps the words on the clipboard and in **History**.
+A restored grant installs a fresh tap through the same poll.

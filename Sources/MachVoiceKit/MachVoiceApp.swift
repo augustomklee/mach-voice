@@ -50,10 +50,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
-        // Every refresh, however it was triggered, gets a chance to bring the event
-        // tap up - the missing half of issue #8.
+        // Every refresh, however it was triggered, brings the event tap in line with
+        // the Accessibility grant: up when it arrives (issue #8), down when it is
+        // taken away (issue #14).
         permissions.onRefresh = { [weak self] in
-            self?.installEventTap()
+            self?.syncEventTapWithGrant()
         }
         permissions.refresh()
 
@@ -83,10 +84,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // was read some other way.
         installEventTap()
 
-        // Notice a grant that arrives after launch with zero interaction (issue #8).
-        // mach-voice is an accessory app with no window, so there is no activation
-        // or menu-open moment to piggyback on instead.
-        startPermissionsPollingIfNeeded()
+        // Notice a grant that arrives or is taken away after launch with zero
+        // interaction (issues #8 and #14). mach-voice is an accessory app with no
+        // window, so there is no activation or menu-open moment to piggyback on.
+        startPermissionsPolling()
+    }
+
+    private func syncEventTapWithGrant() {
+        if permissions.accessibility.isGranted {
+            installEventTap()
+        } else {
+            uninstallEventTap()
+        }
     }
 
     func installEventTap() {
@@ -105,7 +114,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.utteranceController.cancelUtterance()
             },
             onDisabled: { [weak self] in
-                self?.logger.log("Event tap was disabled, re-arming...")
+                // A lost grant is one reason macOS disables a tap, so check it now
+                // rather than re-arming a tap that has to come down at the next tick.
+                self?.logger.log("Event tap was disabled, re-checking permissions before re-arming")
+                self?.permissions.refresh()
             }
         )
         // Only keep the tap once it is confirmed live: assigning it beforehand left
@@ -115,8 +127,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func startPermissionsPollingIfNeeded() {
-        guard !permissions.allGranted, permissionsPollTimer == nil else { return }
+    /// Remove the tap once the grant is gone, so a restored grant installs a fresh
+    /// one through `installEventTap`. An Utterance whose Dictation Key is still held
+    /// is closed by the teardown, and its Transcript strands because Injection
+    /// cannot run without the grant (see `UtteranceController.disposition`).
+    func uninstallEventTap() {
+        guard let eventTap else { return }
+        logger.log("Accessibility grant lost, removing the event tap")
+        eventTap.uninstall()
+        self.eventTap = nil
+    }
+
+    /// Polls for the whole run rather than stopping once everything is granted:
+    /// a grant taken away later has no notification either (issue #14).
+    private func startPermissionsPolling() {
+        guard permissionsPollTimer == nil else { return }
         let timer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.pollPermissions()
@@ -127,10 +152,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func pollPermissions() {
+        let wasGranted = permissions.accessibility.isGranted
         permissions.refresh()
-        if permissions.allGranted {
-            permissionsPollTimer?.invalidate()
-            permissionsPollTimer = nil
+        if wasGranted != permissions.accessibility.isGranted {
+            logger.log("Accessibility granted: \(self.permissions.accessibility.isGranted)")
         }
     }
 }
